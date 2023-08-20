@@ -18,8 +18,8 @@ pluginManagement {
     // it to integrate Readium in submodules.
     // See https://github.com/readium/kotlin-toolkit/pull/97
     plugins {
-        id("com.android.application") version ("7.3.1")
-        id("com.android.library") version ("7.3.1")
+        id("com.android.application") version ("7.4.2")
+        id("com.android.library") version ("7.4.2")
         id("io.github.gradle-nexus.publish-plugin") version ("1.1.0")
         id("org.jetbrains.dokka") version ("1.7.20")
         id("org.jetbrains.kotlin.android") version ("1.7.20")
@@ -30,6 +30,9 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        maven(url="https://maven.aliyun.com/repository/central")
+        maven(url="https://maven.aliyun.com/repository/public")
+        maven(url="https://maven.aliyun.com/repository/gradle-plugin")
         google()
         mavenLocal()
         mavenCentral()

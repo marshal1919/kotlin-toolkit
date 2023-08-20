@@ -16,15 +16,15 @@ android {
     compileSdk = 33
     defaultConfig {
         minSdk = 21
-        targetSdk = 33
+        //targetSdk = 33
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "17"
         allWarningsAsErrors = true
         freeCompilerArgs = freeCompilerArgs + listOf(
             "-opt-in=kotlin.RequiresOptIn",
@@ -59,12 +59,12 @@ dependencies {
         exclude(module = "support-v4")
     }
     implementation(libs.joda.time)
-    implementation("org.zeroturnaround:zt-zip:1.15")
+    implementation("org.zeroturnaround:zt-zip:1.16")
     implementation(libs.androidx.browser)
 
     implementation(libs.bundles.room)
-    kapt(libs.androidx.room.compiler)
-    kapt("org.jetbrains.kotlinx:kotlinx-metadata-jvm:0.5.0")
+    //kapt(libs.androidx.room.compiler)
+    //kapt("org.jetbrains.kotlinx:kotlinx-metadata-jvm:0.7.0")
 
     // Tests
     testImplementation(libs.junit)

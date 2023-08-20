@@ -7,19 +7,21 @@
 import org.jetbrains.dokka.gradle.DokkaTaskPartial
 
 plugins {
-    id("com.android.application") apply false
-    id("com.android.library") apply false
+    id("com.android.application") version "8.1.0"  apply false
+    id("com.android.library") version "8.1.0" apply false
     id("io.github.gradle-nexus.publish-plugin") apply true
     id("org.jetbrains.dokka") apply true
-    id("org.jetbrains.kotlin.android") apply false
+    id("org.jetbrains.kotlin.android") version "1.9.0" apply false
     id("org.jlleitschuh.gradle.ktlint") apply true
 }
 
 apply(from = "$rootDir/scripts/publish-root.gradle")
 
 ext {
-    set("publish.groupId", "org.readium.kotlin-toolkit")
-    set("publish.version", "2.3.0")
+    //set("publish.groupId", "org.readium.kotlin-toolkit")
+    //set("publish.version", "2.3.0")
+    extra["publish.groupId"]="org.readium.kotlin-toolkit"
+    extra["publish.version"]="2.3.0"
 }
 
 subprojects {

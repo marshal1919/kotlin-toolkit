@@ -1,3 +1,5 @@
+import com.android.build.api.dsl.Packaging
+
 /*
  * Copyright 2021 Readium Foundation. All rights reserved.
  * Use of this source code is governed by the BSD-style license
@@ -15,7 +17,7 @@ android {
     compileSdk = 33
     defaultConfig {
         minSdk = 21
-        targetSdk = 33
+        //targetSdk = 28
 
         applicationId = "org.readium.r2reader"
 
@@ -28,11 +30,11 @@ android {
         ndk.abiFilters.add("x86_64")
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "17"
         freeCompilerArgs = freeCompilerArgs + "-opt-in=kotlin.RequiresOptIn"
     }
     composeOptions {
@@ -48,7 +50,7 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android.txt"))
         }
     }
-    packagingOptions {
+    fun Packaging.() {
         resources.excludes.add("META-INF/*")
     }
 

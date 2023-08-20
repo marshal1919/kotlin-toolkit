@@ -1,0 +1,215 @@
+<!--
+  ~ Module: r2-testapp-kotlin
+  ~ Developers: Aferdita Muriqi, Clément Baumann
+  ~
+  ~ Copyright (c) 2018. European Digital Reading Lab. All rights reserved.
+  ~ Licensed to the Readium Foundation under one or more contributor license agreements.
+  ~ Use of this source code is governed by a BSD-style license which is detailed in the
+  ~ LICENSE file present in the project repository where this source code is maintained.
+  -->
+
+<resources>
+    <string name="app_name" translatable="false">精品阅读</string>
+    <string name="menu_item_show_epub_list">显示列表</string>
+    <string name="menu_item_add_epub">增加ePub</string>
+    <string name="menu_item_filter">过滤器</string>
+    <string name="progress_wait_while_searching_book">请等待.</string>
+    <string name="progress_wait">请等待.</string>
+    <string name="progress_wait_while_downloading_book">Please wait while your publication is being downloaded.</string>
+    <string name="progress_wait_while_preparing_book">Please wait while your publication is being prepared.</string>
+    <string name="progress_wait_while_preparing_audiobook">Please wait while your audiobook is being prepared.</string>
+    <string name="progress_wait_while_loading_feed">Please wait while your feed is loading.</string>
+    <string name="error_invalid_epub">无效Epub</string>
+    <string name="fallback_no_description">没有描述</string>
+    <string name="button_dismiss">DISMISS</string>
+
+    <string name="epubactivity_drm_info">DRM信息</string>
+    <string name="epubactivity_set_bookmark">增加一个书签</string>
+    <string name="epubactivity_settings">用户设置</string>
+    <string name="epubactivity_book_nav_options">书箱导航菜单</string>
+    <string name="epubactivity_read_aloud_start">大声读</string>
+    <string name="epubactivity_read_aloud_stop">停止大声读</string>
+    <string name="epubactivity_search">搜索</string>
+
+    <string name="epubactivity_accessibility">Accessibility</string>
+    <string name="epubactivity_accessibility_screen_reader_start">开始屏幕阅读器</string>
+    <string name="epubactivity_accessibility_screen_reader_pause">暂停屏幕阅读器</string>
+    <string name="epubactivity_accessibility_screen_reader_resume">恢复屏幕阅读器</string>
+    <string name="epubactivity_accessibility_screen_reader_stop">停止屏幕阅读器</string>
+
+    <string name="title_activity_opdscatalog">OPDS分类</string>
+    <string name="action_settings">设置</string>
+    <string name="title_activity_r2_about">关于精品阅读</string>
+    <string name="title_activity_opds_list">OPDS反馈</string>
+    <string name="title_activity_opds_detail">细节</string>
+    <string name="title_fragment_drm_management">DRM管理</string>
+    <string name="title_activity_epub">细节</string>
+    <string name="floating_button_add_book">增加一本书</string>
+    <string name="floating_button_add_feed">增加一个OPDS反馈</string>
+    <string name="about_r2_reader">关于精品阅读</string>
+    <string name="more_options">更多选项</string>
+    <string name="opds_feeds">OPDS反馈</string>
+    <string name="popup_delete_button">删除</string>
+    <string name="add_publication_to_library">增加出版物到书库</string>
+    <string name="select_from_your_device">从你的设备选择</string>
+    <string name="download_from_url">从url下载</string>
+
+    <string name="app_version_header">版本</string>
+    <string name="app_version_label">App版本:</string>
+    <string name="app_version">2.2.0</string>
+    <string name="github_tab_label">GitHub Tag:</string>
+    <string name="github_tag">2.2.0</string>
+
+    <string name="copyright_label">版权</string>
+    <string name="copyright">\@ 2019 European Digital Reading Lab</string>
+    <string name="bsd_license_label">[BSD-3 license]</string>
+    <string name="bsd_license_label_accessible">[B S D 3 license]</string>
+    <string name="acknowledgements_label">通知</string>
+    <string name="acknowledgements_french_state">R2 Reader wouldn\'t have been developed without the financial help of the French state.</string>
+    <string name="catalog_list_more">更多</string>
+    <string name="catalog_detail_download_button">下载</string>
+
+
+    <string name="menu_label_drm">DRM</string>
+    <string name="menu_label_settings">设置</string>
+    <string name="menu_label_toc">TOC</string>
+    <string name="usersettings_label_font">字体</string>
+    <string name="usersettings_appearance_default">默认</string>
+    <string name="usersettings_appearance_sepia">Sepia</string>
+    <string name="usersettings_appearance_night">Night</string>
+    <string name="usersettings_label_scroll_mode">卷动模式</string>
+    <string name="usersettings_publisher_default">"Publisher's Default"</string>
+    <string name="usersettings_publisher_default_accessibility">"Publisher's Default Settings"</string>
+    <string name="usersettings_label_columns">列</string>
+    <string name="usersettings_auto">自动</string>
+    <string name="usersettings_column_one">1</string>
+    <string name="usersettings_column_two">2</string>
+    <string name="usersettings_label_page_margins">页边距</string>
+    <string name="usersettings_page_margin_default">0.75</string>
+    <string name="usersettings_label_word_spacing">字符边距</string>
+    <string name="usersettings_label_letter_spacing">字母边距</string>
+    <string name="usersettings_label_line_height">行高</string>
+    <string name="usersettings_label_TTS_speech_speed">TTS速度</string>
+
+    <!-- Accessibility -->
+
+    <string name="usersettings_description_TTS_speech_speed">设置TTS语音速度</string>
+    <string name="usersettings_description_brightness">设置亮度</string>
+    <string name="usersettings_description_font_increase">增加字体尺寸</string>
+    <string name="usersettings_description_font_decrease">减小字体尺寸</string>
+    <string name="usersettings_description_pm_increase">增加页边距</string>
+    <string name="usersettings_description_pm_decrease">减少页边距</string>
+    <string name="usersettings_description_ws_increase">增加字符边距</string>
+    <string name="usersettings_description_ws_decrease">减小字符边距</string>
+    <string name="usersettings_description_ls_increase">增加字母边距</string>
+    <string name="usersettings_description_ls_decrease">减小字母边距</string>
+    <string name="usersettings_description_lh_increase">增加行高</string>
+    <string name="usersettings_description_lh_decrease">减小行高</string>
+
+    <string name="drm_information_header">信息</string>
+    <string name="drm_label_license_type">License类型</string>
+    <string name="drm_label_state">状态</string>
+    <string name="drm_label_provider">提供者</string>
+    <string name="drm_label_issued">发行</string>
+    <string name="drm_label_updated">更新</string>
+    <string name="drm_label_rights">权利</string>
+    <string name="drm_label_prints_left">打印左边</string>
+    <string name="drm_label_copies_left">复制左边</string>
+    <string name="drm_label_start">开始</string>
+    <string name="drm_label_end">结束</string>
+    <string name="drm_label_potential_right_end">潜在权利结束</string>
+    <string name="drm_label_actions">动作</string>
+    <string name="drm_label_renew">翻新</string>
+    <string name="drm_label_return">返回</string>
+    <string name="zero">00:00</string>
+    <string name="chapter">章</string>
+    <string name="chapter_page">章 / 页</string>
+    <string name="progression">进度</string>
+    <string name="timestamp">时间戳</string>
+
+    <!-- Outlines -->
+    <string name="contents_tab_label">内容</string>
+    <string name="bookmarks_tab_label">书签</string>
+    <string name="highlights_tab_label">高亮</string>
+    <string name="pagelist_tab_label">页列表</string>
+    <string name="landmarks_tab_label">标志</string>
+    <string name="action_mode_menu_highlight">高亮</string>
+    <string name="action_mode_menu_underline">下划线</string>
+    <string name="action_mode_menu_note">笔记</string>
+    <string name="bookmark_added">书签已添加</string>
+    <string name="bookmark_exists">书签已存在</string>
+
+    <string name="title_catalogs">分类</string>
+    <string name="title_bookshelf">书架</string>
+    <string name="title_about">关于</string>
+    <string name="cover_image">封面图像</string>
+    <string name="repfr">repfr</string>
+
+    <string name="delete">删除</string>
+    <string name="cancel">取消</string>
+    <string name="confirm_delete_book_title">删除书籍?</string>
+    <string name="confirm_delete_book_text">确定要删除这本书吗?</string>
+    <string name="confirm_delete_catalog_title">删除分类?</string>
+    <string name="confirm_delete_catalog_text">确定要删除这个分类吗?</string>
+
+    <string name="add_book">增加书籍</string>
+    <string name="add_catalog">增加分类</string>
+    <string name="ok">确定</string>
+    <string name="save">保存</string>
+    <string name="enter_title">输入标题</string>
+    <string name="enter_url">输入URL</string>
+    <string name="invalid_title">请输入一个标题</string>
+    <string name="invalid_url">请输入一个合法的URL</string>
+    <string name="catalog_parse_error">解析分类出错，请检查URL并重试</string>
+
+    <string name="publication_image_description">封面图像 %1$s</string>
+
+    <string name="return_publication">这将返回到出版物</string>
+    <string name="return_button">返回</string>
+
+    <string name="end_of_chapter">章节结束</string>
+
+    <string name="unable_to_move_pub">不能移动出版物到书库</string>
+    <string name="import_publication_success">出版物已增加到书库</string>
+    <string name="unable_add_pub_database">不能增加出版物到数据库</string>
+    <string name="failed_parsing_catalog">解析分类失败</string>
+    <string name="next_chapter">下一章</string>
+    <string name="next_sentence">下一句</string>
+    <string name="play_and_pause">播放并暂停</string>
+    <string name="previous_sentence">前一句</string>
+    <string name="previous_chapter">前一章</string>
+    <string name="brightness_lower">更暗</string>
+    <string name="brightness_higher">更亮</string>
+    <string name="no_result">没有结果</string>
+    <string name="note">笔记</string>
+    <string name="add_a_note">增加一条笔记</string>
+    <string name="add_an_annotation">增加一条注释</string>
+    <string name="delete_highlight_or_annotation">删除高亮或注释</string>
+    <string name="yellow">黄</string>
+    <string name="green">绿</string>
+    <string name="blue">蓝</string>
+    <string name="red">红</string>
+    <string name="purple">紫</string>
+    <string name="seek_bar">查找条</string>
+    <string name="go_backward_30_seconds">回退30秒</string>
+    <string name="play_or_pause">播放或暂停</string>
+    <string name="go_forward_30_seconds">前进30秒</string>
+    <string name="select_a_font">选择字体</string>
+    <string name="close">关闭</string>
+    <string name="language">语言</string>
+    <string name="auto">自动</string>
+
+    <string name="tts_error_initialization">初始化TTS引擎失败</string>
+    <string name="tts_error_language_not_supported"> %s 语言不被支持</string>
+    <string name="tts_error_language_support_incomplete"> %s 语言需要附加数据，你想下载吗?</string>
+    <string name="tts_error_network">网络错误</string>
+    <string name="tts_error_other">TTS错误</string>
+    <string name="tts_next">向前</string>
+    <string name="tts_pause">暂停</string>
+    <string name="tts_play">播放</string>
+    <string name="tts_previous">向后</string>
+    <string name="tts_rate">速率</string>
+    <string name="tts_settings">语音设置</string>
+    <string name="tts_stop">停止</string>
+    <string name="tts_voice">声音</string>
+</resources>
