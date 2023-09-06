@@ -18,10 +18,11 @@ plugins {
 
 apply(from = "$rootDir/scripts/publish-root.gradle")
 
-ext {
-    set("publish.groupId", "org.readium.kotlin-toolkit")
-    set("publish.version", "2.3.0")
-}
+    ext.set("publish.groupId", "org.readium.kotlin-toolkit")
+    ext.set("publish.version", "3.0.0")
+    //extra["publish.groupId"]="org.readium.kotlin-toolkit"
+    //extra["publish.version"]="3.0.0"
+
 
 subprojects {
     apply(plugin = "org.jlleitschuh.gradle.ktlint")

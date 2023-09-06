@@ -188,6 +188,8 @@ class AudioReaderFragment : BaseReaderFragment(), SeekBar.OnSeekBarChangeListene
             is MediaNavigator.State.Error -> {
                 // Do nothing.
             }
+
+            //else -> {}
         }
     }
 

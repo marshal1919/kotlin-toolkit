@@ -15,7 +15,7 @@ android {
     compileSdk = 34
     defaultConfig {
         minSdk = 21
-        targetSdk = 34
+        //targetSdk = 34
 
         applicationId = "org.readium.r2reader"
 
@@ -45,6 +45,10 @@ android {
     }
     buildTypes {
         getByName("release") {
+            isMinifyEnabled = false
+            proguardFiles(getDefaultProguardFile("proguard-android.txt"))
+        }
+        getByName("debug") {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android.txt"))
         }

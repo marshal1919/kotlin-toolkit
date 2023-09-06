@@ -93,7 +93,7 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
 
         (navigator as VisualNavigator).apply {
             // This will automatically turn pages when tapping the screen edges or arrow keys.
-            addInputListener(DirectionalNavigationAdapter())
+            //addInputListener(DirectionalNavigationAdapter())
 
             addInputListener(object : InputListener {
                 override fun onTap(navigator: VisualNavigator, event: TapEvent): Boolean {
@@ -349,6 +349,7 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
                 menu.findItem(R.id.highlight).isVisible = true
                 menu.findItem(R.id.underline).isVisible = true
                 menu.findItem(R.id.note).isVisible = true
+                menu.findItem(R.id.translate).isVisible = true
             }
             return true
         }
@@ -358,6 +359,7 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
                 R.id.highlight -> showHighlightPopupWithStyle(Highlight.Style.HIGHLIGHT)
                 R.id.underline -> showHighlightPopupWithStyle(Highlight.Style.UNDERLINE)
                 R.id.note -> showAnnotationPopup()
+                R.id.translate->translatePopup()
                 else -> return false
             }
 
@@ -536,6 +538,9 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
             }
         }
 
+    private fun translatePopup(){
+
+    }
     fun updateSystemUiVisibility() {
         if (navigatorFragment.isHidden)
             requireActivity().showSystemUi()

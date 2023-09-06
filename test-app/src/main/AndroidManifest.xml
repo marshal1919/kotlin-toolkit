@@ -13,6 +13,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
 
     <queries>
         <intent>
@@ -22,6 +23,7 @@
 
     <!-- android:networkSecurityConfig is required for r2-lcp-kotlin and r2-navigator-kotlin -->
     <application
+        android:requestLegacyExternalStorage="true"
         android:name=".Application"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"

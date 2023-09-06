@@ -48,7 +48,7 @@ kotlinx-coroutines = "1.7.3"
 kotlinx-coroutines-test = "1.7.3"
 kotlinx-serialization-json = "1.5.1"
 
-pdfium = "1.8.2"
+pdfium = "1.9.0"
 pdf-viewer = "2.8.2"
 picasso = "2.8"
 pspdfkit = "8.4.1"

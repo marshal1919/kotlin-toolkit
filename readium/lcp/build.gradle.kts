@@ -17,7 +17,7 @@ android {
     compileSdk = 34
     defaultConfig {
         minSdk = 21
-        targetSdk = 34
+        //targetSdk = 34
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
@@ -67,7 +67,7 @@ dependencies {
         exclude(module = "support-v4")
     }
     implementation(libs.joda.time)
-    implementation("org.zeroturnaround:zt-zip:1.15")
+    implementation("org.zeroturnaround:zt-zip:1.16")
     implementation(libs.androidx.browser)
 
     implementation(libs.bundles.room)
