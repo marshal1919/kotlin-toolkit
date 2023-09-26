@@ -1,0 +1,85 @@
+@startuml
+'https://plantuml.com/sequence-diagram
+
+autonumber
+
+"Main\nActivity" -> "Bookshelf\nFragment": Nav导航
+
+"Bookshelf\nFragment" -> "Bookshelf\nViewModel" :内部书架\n视图模型
+"Bookshelf\nViewModel"->"Reader\nActivity":open\nPublication
+"Reader\nActivity"->"EpubReader\nFragment":onCreate
+'newpage
+"EpubReader\nFragment"->"EpubNavigator\nFragment":onCreateView
+@enduml
+
+@startuml
+page 2x2
+class VisualReaderFragment{
+            setupObservers()
+            setupHighlights()
+        }
+class EpubReaderFragment{
+        navigator:EpubNavigatorFragment
+        }
+class ReaderViewModel{
+publication: Publication
+}
+class BaseReaderFragment{
+model: ReaderViewModel
+}
+together{
+class EpubNavigator\nFragment{
+currentFragment:R2EpubPageFragment
+viewModel:EpubNavigatorViewModel
+r2PagerAdapter:R2PagerAdapter
+resourcePager:R2ViewPager
+
+class EpubNavigatorViewModel{
+
+}
+class R2EpubPageFragment
+R2EpubPageFragment : webView:R2WebView
+class R2PagerAdapter extends R2FragmentPagerAdapter
+class R2ViewPager extends R2RTLViewPager
+R2ViewPager : adapter
+}
+    'MainActivity->x
+    VisualReaderFragment->EpubReaderFragment
+    BaseReaderFragment->VisualReaderFragment
+    BaseReaderFragment::model->ReaderViewModel
+
+    ReaderViewModel -[hidden]-> R2EpubPageFragment
+    EpubNavigator\nFragment::viewModel*-up-EpubNavigatorViewModel
+    EpubNavigator\nFragment::currentFragment*-up-R2EpubPageFragment
+    EpubNavigator\nFragment::r2PagerAdapter*-down-R2PagerAdapter
+    EpubNavigator\nFragment::resourcePager*-up-R2ViewPager
+    R2ViewPager::adapter-up->R2PagerAdapter
+
+together{
+class R2WebView{
+scrollToItem()
+smoothScrollTo()
+}
+class R2BasicWebView{
+scrollToText()
+}
+}
+R2ViewPager -[hidden]-> R2WebView
+R2WebView -|> R2BasicWebView
+
+@enduml
+
+@startuml
+class EpubReader\nFragment{
+onViewCreated()
+}
+"UserPreferences\nViewModel" : bind(navigator, viewLifecycleOwner)
+"EpubNavigator\nFragment" : submitPreferences()
+EpubNavigatorViewModel : submitPreferences(preferences)
+
+EpubReader\nFragment-->UserPreferences\nViewModel
+UserPreferences\nViewModel-->EpubNavigator\nFragment
+EpubNavigator\nFragment-->EpubNavigatorViewModel
+
+note left of EpubReader\nFragment : 参数设置
+@enduml
