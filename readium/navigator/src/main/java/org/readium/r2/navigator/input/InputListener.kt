@@ -20,6 +20,11 @@ public interface InputListener {
      * Called when the user pressed or released a key, but nothing handled the event internally.
      */
     public fun onKey(navigator: VisualNavigator, event: KeyEvent): Boolean = false
+
+    /**
+     * 用户单击选择一个单词时调用
+     */
+    public fun onWordSelected(word:String): Boolean = false
 }
 
 @OptIn(ExperimentalReadiumApi::class)
@@ -42,4 +47,7 @@ internal class CompositeInputListener : InputListener {
 
     override fun onKey(navigator: VisualNavigator, event: KeyEvent): Boolean =
         listeners.any { it.onKey(navigator, event) }
+
+    override fun onWordSelected(word: String): Boolean  =
+        listeners.any { it.onWordSelected(word) }
 }

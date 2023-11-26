@@ -213,4 +213,6 @@
     <string name="tts_settings">语音设置</string>
     <string name="tts_stop">停止</string>
     <string name="tts_voice">声音</string>
+
+    <string name="dictionary">字典</string>
 </resources>

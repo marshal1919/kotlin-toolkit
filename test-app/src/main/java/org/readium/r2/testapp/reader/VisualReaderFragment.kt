@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Readium Foundation. All rights reserved.
+ * Copyright 2021 Readium Found ation. All rights reserved.
  * Use of this source code is governed by the BSD-style license
  * available in the top-level LICENSE file of the project.
  */
@@ -11,13 +11,19 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.RectF
 import android.os.Bundle
+import android.text.Spanned
+import android.text.TextPaint
+import android.text.method.LinkMovementMethod
+import android.text.style.ClickableSpan
 import android.view.*
 import android.view.WindowInsets
 import android.view.inputmethod.InputMethodManager
+import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.TextView
+import android.widget.Toast
 import androidx.annotation.ColorInt
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -46,7 +52,7 @@ import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.navigator.media3.tts.android.AndroidTtsEngine
 import org.readium.r2.navigator.util.BaseActionModeCallback
-import org.readium.r2.navigator.util.DirectionalNavigationAdapter
+//import org.readium.r2.navigator.util.DirectionalNavigationAdapter
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.util.Language
@@ -59,6 +65,7 @@ import org.readium.r2.testapp.reader.tts.TtsViewModel
 import org.readium.r2.testapp.utils.*
 import org.readium.r2.testapp.utils.extensions.confirmDialog
 import org.readium.r2.testapp.utils.extensions.throttleLatest
+import org.readium.r2.testapp.DictData
 
 /*
  * Base reader fragment class
@@ -71,6 +78,12 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
     protected var binding: FragmentReaderBinding by viewLifecycle()
 
     private lateinit var navigatorFragment: Fragment
+
+    private lateinit var dict:DictData
+
+    private var dia_dict:AlertDialog? = null
+    private var isDictShowing = false
+    private var wordBook= mutableListOf<String>()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -97,7 +110,21 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
 
             addInputListener(object : InputListener {
                 override fun onTap(navigator: VisualNavigator, event: TapEvent): Boolean {
-                    requireActivity().toggleSystemUi()
+                    //隐藏上一次的弹窗
+                    if(isDictShowing){
+                        dia_dict?.hide()
+                        isDictShowing=false
+                    }
+                    else
+                        requireActivity().toggleSystemUi()
+
+                    return true
+                }
+            })
+
+            addInputListener(object : InputListener {
+                override fun onWordSelected(word:String): Boolean {
+                    translatePopup(word)
                     return true
                 }
             })
@@ -155,6 +182,8 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
             },
             viewLifecycleOwner
         )
+
+        dict=DictData(this.requireContext())
     }
 
     @Composable
@@ -286,6 +315,7 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
     override fun onDestroyView() {
         (navigator as? DecorableNavigator)?.removeDecorationListener(decorationListener)
         super.onDestroyView()
+        dia_dict?.dismiss()
     }
 
     override fun onHiddenChanged(hidden: Boolean) {
@@ -369,6 +399,7 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
             }
 
             mode.finish()
+            requireActivity().hideSystemUi()
             return true
         }
     }
@@ -386,12 +417,12 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
 
     private fun showHighlightPopup(rect: RectF, style: Highlight.Style, highlightId: Long? = null) =
         viewLifecycleOwner.lifecycleScope.launch {
-            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                if (popupWindow?.isShowing == true) return@repeatOnLifecycle
+            //viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                //if (popupWindow?.isShowing == true) return@repeatOnLifecycle
 
                 model.activeHighlightId.value = highlightId
 
-                val isReverse = (rect.top > 60)
+                val isReverse = (rect.top > 200)
                 val popupView = layoutInflater.inflate(
                     if (isReverse) R.layout.view_action_mode_reverse else R.layout.view_action_mode,
                     null,
@@ -414,14 +445,14 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
                 }
 
                 val x = rect.left
-                val y = if (isReverse) rect.top else rect.bottom + rect.height()
+                val y = if (isReverse) rect.top -popupView.measuredHeight else rect.top+rect.height()
 
                 popupWindow?.showAtLocation(popupView, Gravity.NO_GRAVITY, x.toInt(), y.toInt())
 
                 val highlight = highlightId?.let { model.highlightById(it) }
                 popupView.run {
                     findViewById<View>(R.id.notch).run {
-                        setX(rect.left * 2)
+                        setX(rect.left )
                     }
 
                     fun selectTint(view: View) {
@@ -438,6 +469,7 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
                     findViewById<View>(R.id.annotation).setOnClickListener {
                         popupWindow?.dismiss()
                         showAnnotationPopup(highlightId)
+                        requireActivity().hideSystemUi()
                     }
                     findViewById<View>(R.id.del).run {
                         visibility = if (highlight != null) View.VISIBLE else View.GONE
@@ -450,7 +482,9 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
                         }
                     }
                 }
-            }
+                requireActivity().hideSystemUi()
+                requireView().requestApplyInsets()
+            //}
         }
 
     private fun selectHighlightTint(
@@ -459,7 +493,7 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
         @ColorInt tint: Int
     ) =
         viewLifecycleOwner.lifecycleScope.launch {
-            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            //viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 if (highlightId != null) {
                     model.updateHighlightStyle(highlightId, style, tint)
                 } else {
@@ -477,13 +511,13 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
 
                 popupWindow?.dismiss()
                 mode?.finish()
-            }
+            //}
         }
 
     private fun showAnnotationPopup(highlightId: Long? = null) =
         viewLifecycleOwner.lifecycleScope.launch {
-            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                val activity = activity ?: return@repeatOnLifecycle
+            //viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                val activity = activity //?: return@repeatOnLifecycle
                 val view = layoutInflater.inflate(R.layout.popup_note, null, false)
                 val note = view.findViewById<EditText>(R.id.note)
                 val alert = AlertDialog.Builder(activity)
@@ -493,11 +527,13 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
                 fun dismiss() {
                     alert.dismiss()
                     mode?.finish()
-                    (activity.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
+                    (activity?.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
                         .hideSoftInputFromWindow(
                             note.applicationWindowToken,
                             InputMethodManager.HIDE_NOT_ALWAYS
                         )
+                    requireActivity().hideSystemUi()
+
                 }
 
                 with(view) {
@@ -517,19 +553,21 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
                         val tint = highlightTints.values.random()
                         findViewById<View>(R.id.sidemark).setBackgroundColor(tint)
                         val navigator =
-                            navigator as? SelectableNavigator ?: return@repeatOnLifecycle
-                        val selection = navigator.currentSelection() ?: return@repeatOnLifecycle
-                        navigator.clearSelection()
+                            navigator as? SelectableNavigator //?: return@repeatOnLifecycle
+                        val selection = navigator?.currentSelection() //?: return@repeatOnLifecycle
+                        navigator?.clearSelection()
                         findViewById<TextView>(R.id.select_text).text =
-                            selection.locator.text.highlight
+                            selection?.locator?.text?.highlight
 
                         findViewById<TextView>(R.id.positive).setOnClickListener {
-                            model.addHighlight(
-                                locator = selection.locator,
-                                style = Highlight.Style.HIGHLIGHT,
-                                tint = tint,
-                                annotation = note.text.toString()
-                            )
+                            if (selection != null) {
+                                model.addHighlight(
+                                    locator = selection.locator,
+                                    style = Highlight.Style.HIGHLIGHT,
+                                    tint = tint,
+                                    annotation = note.text.toString()
+                                )
+                            }
                             dismiss()
                         }
                     }
@@ -540,12 +578,128 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
                 }
 
                 alert.show()
-            }
+
+            //}
+
         }
 
-    private fun translatePopup(){
+    private fun translatePopup(word:String="")=
+        viewLifecycleOwner.lifecycleScope.launch {
+            //viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            //
+            var alert:AlertDialog?
+            var title:TextView?
+            var content:TextView?
+            var btnWorkbook:Button?
+            var _word=word
 
-    }
+            fun setBtnState(btn:Button,inWordBook:Boolean){
+                if(inWordBook){
+                    btn.setBackgroundColor(Color.GRAY)
+                    btn.text = "已收藏"
+                }
+                else{
+                    btn.setBackgroundColor(Color.parseColor("#F57F17"))
+                    btn.text = "生词本"
+                }
+            }
+
+            if(dia_dict!=null){
+                alert=dia_dict
+                title =alert?.findViewById<TextView>(R.id.textWord)
+                content=alert?.findViewById<TextView>(R.id.textWordExplain)
+                btnWorkbook =alert?.findViewById<Button>(R.id.b_workbook)
+            }
+            else{
+                val activity = activity //?: return@repeatOnLifecycle
+                val view = layoutInflater.inflate(R.layout.dialog_dict, null, false)
+
+                alert = AlertDialog.Builder(activity)
+                    .setView(view)
+                    .create()
+                alert.window?.attributes?.alpha =0.9f
+                //alert.window?.attributes?.dimAmount = 0.0f
+                alert.window?.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                alert.window?.setFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+
+                fun hide() {
+                    alert.hide()
+                    requireActivity().hideSystemUi()
+                    isDictShowing=false
+                }
+
+                with(view) {
+                    findViewById<Button>(R.id.b_close).setOnClickListener {
+                        hide()
+                    }
+                    findViewById<Button>(R.id.b_other).setOnClickListener {
+                        hide()
+                    }
+                    title = findViewById<TextView>(R.id.textWord)
+                    content=findViewById<TextView>(R.id.textWordExplain)
+                    btnWorkbook =findViewById<Button>(R.id.b_workbook)
+                }
+                dia_dict=alert
+            }
+
+            btnWorkbook?.setOnClickListener {
+                var inWordBook=wordBook.contains(_word)
+                if(inWordBook){
+                    wordBook.remove(_word)
+                }
+                else {
+                    wordBook.add(_word)
+                }
+                setBtnState(btnWorkbook!!,!inWordBook)
+            }
+
+            val navigator =
+            navigator as? SelectableNavigator ?//: return@repeatOnLifecycle
+
+            if(_word!=""){
+                title?.text = _word
+            }
+            else {
+                val selection = navigator?.currentSelection() //?: return@repeatOnLifecycle
+                title?.text = selection?.locator?.text?.highlight
+            }
+            navigator?.clearSelection()
+
+            if(dict.isOpened) {
+                val rs= (title?.text as String?)?.let { dict.getResult(it) }
+                //存在原型单词
+                if(dict.spanPos.second!=0){
+                    val clickableSpan: ClickableSpan = object : ClickableSpan() {
+                        override fun updateDrawState(ds: TextPaint) {
+                            ds.color = android.graphics.Color.RED
+                            ds.isUnderlineText = true
+                        }
+
+                        override fun onClick(widget: View) {
+                            val newWord=(widget as TextView).text.toString().substring(dict.spanPos.first, dict.spanPos.second)
+                            val explain =dict.getResult(newWord)
+                            title?.text=newWord
+                            content?.text=explain
+                            _word=newWord
+                            alert?.findViewById<Button>(R.id.b_workbook)
+                                ?.let { setBtnState(it,wordBook.contains(_word)) }
+                        }
+                    }
+                    rs?.setSpan(clickableSpan, dict.spanPos.first, dict.spanPos.second, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+
+                }
+
+                content?.text=rs
+                content?.movementMethod = LinkMovementMethod.getInstance()
+
+            }
+            alert?.findViewById<Button>(R.id.b_workbook)
+                ?.let { setBtnState(it,wordBook.contains(_word)) }
+            alert?.show()
+            requireActivity().hideSystemUi()
+            isDictShowing=true
+        }
+
     fun updateSystemUiVisibility() {
         if (navigatorFragment.isHidden) {
             requireActivity().showSystemUi()

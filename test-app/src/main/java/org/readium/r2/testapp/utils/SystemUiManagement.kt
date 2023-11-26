@@ -49,6 +49,7 @@ fun Activity.toggleSystemUi() {
     if (this.isSystemUiVisible()) {
         this.hideSystemUi()
     } else {
+        //this.hideSystemUi()
         this.showSystemUi()
     }
 }

@@ -5,10 +5,12 @@
  */
 
 plugins {
-    id("com.android.library")
+    //id("com.android.library")
+    alias(libs.plugins.library)
     kotlin("android")
     kotlin("plugin.parcelize")
-    kotlin("plugin.serialization")
+    //kotlin("plugin.serialization")
+    alias(libs.plugins.serialization)
 }
 
 android {

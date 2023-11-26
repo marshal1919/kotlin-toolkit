@@ -1,3 +1,7 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import org.gradle.api.tasks.testing.Test
+import org.gradle.internal.impldep.org.apache.commons.lang.mutable.Mutable
+
 /*
  * Copyright 2021 Readium Foundation. All rights reserved.
  * Use of this source code is governed by the BSD-style license
@@ -9,6 +13,9 @@ plugins {
     kotlin("android")
     id("com.google.devtools.ksp")
     kotlin("plugin.parcelize")
+    //id("de.mannodermaus.android-junit5").version("1.8.2.1")
+    //kotlin("jvm")
+    //id("java")
 }
 
 android {
@@ -19,13 +26,14 @@ android {
 
         applicationId = "org.readium.r2reader"
 
-        versionName = "2.3.0"
+        versionName = "3.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk.abiFilters.add("armeabi-v7a")
         ndk.abiFilters.add("arm64-v8a")
         ndk.abiFilters.add("x86")
         ndk.abiFilters.add("x86_64")
+        //testInstrumentationRunnerArguments["runnerBuiler"]= "de.mannodermaus.junit5.AndroidJUnit5Builder"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -34,6 +42,9 @@ android {
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_17.toString()
         freeCompilerArgs = freeCompilerArgs + "-opt-in=kotlin.RequiresOptIn"
+    }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = libs.versions.androidx.compose.compiler.get()
@@ -113,11 +124,42 @@ dependencies {
 
     // Room database
     implementation(libs.bundles.room)
+    implementation(libs.junit)
+    //implementation(libs.junit.jupiter)
+    implementation(libs.androidx.junit.ktx)
     ksp(libs.androidx.room.compiler)
 
     // Tests
-    testImplementation(libs.junit)
+    //testImplementation(libs.junit)
 
     androidTestImplementation(libs.androidx.ext.junit)
     androidTestImplementation(libs.androidx.expresso.core)
+    androidTestImplementation(libs.robolectric)
+    //androidTestImplementation(libs.junit.jupiter)
+    androidTestImplementation(libs.kotlin.test)
+    //androidTestImplementation(libs.testcore)
+    //androidTestImplementation(libs.androidx.junit5.test)
+    //androidTestImplementation(libs.junit5.test.core)
+    //androidTestRuntimeOnly(libs.junit5.test.runner)
+    //androidTestRuntimeOnly(libs.junit.jupiter.engine)
+    androidTestImplementation(libs.robolectric)
+    testImplementation(libs.robolectric)
+    //testImplementation(libs.kotlin.junit)
+    //testImplementation(libs.junit.jupiter)
+    testImplementation(libs.kotlin.junit)
+    //testImplementation(libs.kotlin.test)
+    //testImplementation(platform(libs.junit.junitbom))
+    //testImplementation(libs.testcore)
+    //testImplementation(libs.androidx.core.ktx)
+    testImplementation(libs.junit)
+    testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    //testImplementation(libs.androidx.junit5.test)
+    //testImplementation(libs.junit.platform)
+    //testCompileOnly(libs.junit.jupiter)
 }
+
+/*tasks.withType<Test>{
+    useJUnitPlatform()
+}*/
+

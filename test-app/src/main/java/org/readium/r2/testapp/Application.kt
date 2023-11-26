@@ -14,13 +14,14 @@ import com.google.android.material.color.DynamicColors
 import java.io.File
 import java.util.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.Dispatchers.IO
 import org.readium.r2.testapp.BuildConfig.DEBUG
 import org.readium.r2.testapp.bookshelf.BookRepository
 import org.readium.r2.testapp.db.BookDatabase
 import org.readium.r2.testapp.reader.ReaderRepository
 import timber.log.Timber
 
-class Application : android.app.Application() {
+open class Application : android.app.Application() {
 
     lateinit var readium: Readium
         private set
@@ -28,6 +29,9 @@ class Application : android.app.Application() {
     lateinit var storageDir: File
 
     lateinit var bookRepository: BookRepository
+        private set
+
+    lateinit var wordBooks: List<WordBook>
         private set
 
     lateinit var readerRepository: Deferred<ReaderRepository>
@@ -75,6 +79,12 @@ class Application : android.app.Application() {
                     navigatorPreferences
                 )
             }
+
+        val result=coroutineScope.async(IO) {
+            WordBookDB.getDatabase(this@Application)
+                .wBookDao().getAllWords()
+        }
+        wordBooks=result.await()
     }
 
     private fun computeStorageDir(): File {

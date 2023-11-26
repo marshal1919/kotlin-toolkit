@@ -71,6 +71,7 @@ internal open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebV
         fun onProgressionChanged() {}
         fun goForward(animated: Boolean = false, completion: () -> Unit = {}): Boolean = false
         fun goBackward(animated: Boolean = false, completion: () -> Unit = {}): Boolean = false
+        fun onWordSelected(word:String): Boolean = false
 
         /**
          * Returns the custom [ActionMode.Callback] to be used with the text selection menu.
@@ -259,6 +260,15 @@ internal open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebV
         }
     }
 
+    /*
+     * 返回点击选择的单词
+     */
+    @android.webkit.JavascriptInterface
+    fun onWordSelected(eventJson: String): Boolean {
+        val obj = tryOrLog { JSONObject(eventJson) }
+        val word = obj?.optNullableString("word")
+        return listener?.onWordSelected(word.toString()) ?: false
+    }
     /*
      * Returns whether the web view should prevent the default behavior for this tap.
      */

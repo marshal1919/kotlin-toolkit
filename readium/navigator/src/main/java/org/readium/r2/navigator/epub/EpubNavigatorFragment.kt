@@ -701,7 +701,7 @@ public class EpubNavigatorFragment internal constructor(
 
     private fun RectF.adjustedToViewport(): RectF =
         currentReflowablePageFragment?.paddingTop?.let { topOffset ->
-            RectF(left, top + topOffset, right, bottom)
+            RectF(left, top + topOffset, right, bottom+ topOffset)
         } ?: this
 
     // DecorableNavigator
@@ -741,6 +741,9 @@ public class EpubNavigatorFragment internal constructor(
 
         override fun javascriptInterfacesForResource(link: Link): Map<String, Any?> =
             config.javascriptInterfaces.mapValues { (_, factory) -> factory(link) }
+
+        override fun onWordSelected(word: String): Boolean =
+            inputListener.onWordSelected(word)
 
         override fun onTap(point: PointF): Boolean =
             inputListener.onTap(this@EpubNavigatorFragment, TapEvent(point))

@@ -7,6 +7,7 @@
 import { log as logNative, logError, snapCurrentOffset } from "./utils";
 import { toNativeRect } from "./rect";
 import { TextRange } from "./vendor/hypothesis/anchoring/text-range";
+import { rectCorrect } from "./decorator";
 
 // Polyfill for Android API 26
 import matchAll from "string.prototype.matchall";
@@ -53,7 +54,8 @@ function getSelectionRect() {
     }
     let range = sel.getRangeAt(0);
 
-    return toNativeRect(range.getBoundingClientRect());
+    //return toNativeRect(range.getBoundingClientRect());
+    return toNativeRect(rectCorrect(range.getBoundingClientRect(),window.innerWidth, window.innerHeight));
   } catch (e) {
     logError(e);
     return null;

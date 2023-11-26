@@ -6,9 +6,21 @@
 
 package org.readium.r2.testapp
 
+import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
+import android.view.View
+import android.widget.Toast
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.AppBarConfiguration
@@ -21,6 +33,13 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var navController: NavController
     private val viewModel: BookshelfViewModel by viewModels()
+    private lateinit var sharedStoragePickerLauncher: ActivityResultLauncher<Array<String>>
+    private lateinit var dictUri: String
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.mainmenu, menu)
+        return true
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,9 +63,75 @@ class MainActivity : AppCompatActivity() {
         )
         setupActionBarWithNavController(navController, appBarConfiguration)
         navView.setupWithNavController(navController)
+
+        //弹出请求获取存储权限的对话框
+        val REQUEST_EXTERNAL_STORAGE = 1
+        val PERMISSIONS_STORAGE = arrayOf(
+            Manifest.permission.READ_EXTERNAL_STORAGE,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE
+        )
+        val permission = ActivityCompat.checkSelfPermission(
+            this@MainActivity,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE
+        )
+        if (permission != PackageManager.PERMISSION_GRANTED) {
+            // We don't have permission so prompt the user
+            ActivityCompat.requestPermissions(
+                this@MainActivity,
+                PERMISSIONS_STORAGE,
+                REQUEST_EXTERNAL_STORAGE
+            )
+        }
+
+        sharedStoragePickerLauncher =
+            registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+                uri?.let {
+                    val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    contentResolver.takePersistableUriPermission(uri, takeFlags)
+
+                    dictUri=setDictPreferences(it)
+                }
+            }
     }
 
     override fun onSupportNavigateUp(): Boolean {
         return navController.navigateUp() || super.onSupportNavigateUp()
+    }
+
+    //获取字典的uri
+    private fun setDictPreferences(uri:Uri): String {
+        val path=uri.path
+        var externalFileRootDir = getExternalFilesDir(null)
+        do {
+            externalFileRootDir =externalFileRootDir?.parentFile
+        } while (externalFileRootDir?.absolutePath!!.contains("/Android"))
+
+        val saveDir = externalFileRootDir.absolutePath
+        var name= saveDir+"/"+ path?.split(":")?.get(1)
+
+        // 向preferences中存入数据
+        val sharedPreferences = getSharedPreferences("dictpref", Context.MODE_PRIVATE)
+        val editor = sharedPreferences.edit()
+        editor.putString("uri", name)
+        editor.apply()
+
+        return name
+    }
+
+    fun fabClick(view: android.view.View) {
+        Toast.makeText(this, "请先选择字典位置", Toast.LENGTH_LONG).show()
+        sharedStoragePickerLauncher.launch(arrayOf("*/*","text/plain","application/pdf","application/epub+zip"))
+        //if(isExternalStorageWritable())
+        //    loadFile("test.txt")
+    }
+
+    //从preferences中读取字典数据，若没有则选择默认字典
+    fun setDict(itemMenu: MenuItem) {
+        /*val sharedPreferences = this.getSharedPreferences("dictpref", Context.MODE_PRIVATE)
+        val path = sharedPreferences.getString("uri", null)
+        if(path==null){
+
+        }*/
+        sharedStoragePickerLauncher.launch(arrayOf("*/*","text/plain","application/pdf","application/epub+zip"))
     }
 }

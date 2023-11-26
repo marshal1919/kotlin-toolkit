@@ -5,7 +5,7 @@
 -->
 
 <resources>
-    <string name="app_name" translatable="false">R2 Reader</string>
+    <string name="app_name">R2 Reader</string>
 
     <string name="epubactivity_drm_info">DRM Info</string>
     <string name="epubactivity_set_bookmark">Add a bookmark</string>
@@ -149,4 +149,5 @@
     <string name="tts_settings">Speech settings</string>
     <string name="tts_stop">Stop</string>
     <string name="tts_voice">Voice</string>
+    <string name="dictionary">Dictionary</string>
 </resources>
