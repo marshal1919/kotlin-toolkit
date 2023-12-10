@@ -14,6 +14,7 @@ import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.services.PositionsService
+import org.readium.r2.shared.util.getOrElse
 import org.readium.r2.shared.util.mediatype.MediaType
 import org.readium.r2.shared.util.pdf.PdfDocument
 import org.readium.r2.shared.util.pdf.PdfDocumentFactory
@@ -75,13 +76,15 @@ internal class LcpdfPositionsService(
             return emptyList()
         }
 
+        val href = link.url()
+
         // FIXME: Use the [tableOfContents] to generate the titles
         return (1..pageCount).map { position ->
             val progression = (position - 1) / pageCount.toDouble()
             val totalProgression = (startPosition + position - 1) / totalPageCount.toDouble()
             Locator(
-                href = link.href,
-                type = (link.mediaType ?: MediaType.PDF).toString(),
+                href = href,
+                mediaType = link.mediaType ?: MediaType.PDF,
                 locations = Locator.Locations(
                     fragments = listOf("page=$position"),
                     progression = progression,
@@ -93,14 +96,13 @@ internal class LcpdfPositionsService(
     }
 
     private suspend fun openPdfAt(link: Link): PdfDocument? =
-        try {
-            pdfFactory
-                .cachedIn(context.services)
-                .open(context.container.get(link.href), password = null)
-        } catch (e: Exception) {
-            Timber.e(e)
-            null
-        }
+        pdfFactory
+            .cachedIn(context.services)
+            .open(context.container.get(link.url()), password = null)
+            .getOrElse {
+                Timber.e(it)
+                null
+            }
 
     companion object {
 

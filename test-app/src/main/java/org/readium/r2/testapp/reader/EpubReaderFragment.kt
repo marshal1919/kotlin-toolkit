@@ -41,7 +41,7 @@ import org.readium.r2.testapp.reader.preferences.UserPreferencesViewModel
 import org.readium.r2.testapp.search.SearchFragment
 
 @OptIn(ExperimentalReadiumApi::class, ExperimentalDecorator::class)
-class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listener {
+class EpubReaderFragment : VisualReaderFragment() {
 
     override lateinit var navigator: EpubNavigatorFragment
 
@@ -61,7 +61,7 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
             readerData.navigatorFactory.createFragmentFactory(
                 initialLocator = readerData.initialLocation,
                 initialPreferences = readerData.preferencesManager.preferences.value,
-                listener = this,
+                listener = model,
                 configuration = EpubNavigatorFragment.Configuration {
                     // To customize the text selection menu.
                     selectionActionModeCallback = customSelectionActionModeCallback
@@ -288,7 +288,7 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
 @OptIn(ExperimentalDecorator::class)
 private fun annotationMarkTemplate(@ColorInt defaultTint: Int = Color.YELLOW): HtmlDecorationTemplate {
     val className = "testapp-annotation-mark"
-    val iconUrl = EpubNavigatorFragment.assetUrl("annotation-icon.svg")
+    val iconUrl = checkNotNull(EpubNavigatorFragment.assetUrl("annotation-icon.svg"))
     return HtmlDecorationTemplate(
         layout = HtmlDecorationTemplate.Layout.BOUNDS,
         width = HtmlDecorationTemplate.Width.PAGE,

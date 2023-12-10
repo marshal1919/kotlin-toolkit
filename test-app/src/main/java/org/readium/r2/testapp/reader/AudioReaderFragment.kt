@@ -23,10 +23,10 @@ import kotlin.time.DurationUnit
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
-import org.readium.r2.navigator.media3.api.MediaNavigator
-import org.readium.r2.navigator.media3.api.TimeBasedMediaNavigator
-import org.readium.r2.navigator.media3.exoplayer.ExoPlayerPreferences
-import org.readium.r2.navigator.media3.exoplayer.ExoPlayerSettings
+import org.readium.adapter.exoplayer.audio.ExoPlayerPreferences
+import org.readium.adapter.exoplayer.audio.ExoPlayerSettings
+import org.readium.navigator.media.common.MediaNavigator
+import org.readium.navigator.media.common.TimeBasedMediaNavigator
 import org.readium.r2.navigator.preferences.Configurable
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Locator
@@ -88,7 +88,9 @@ class AudioReaderFragment : BaseReaderFragment(), SeekBar.OnSeekBarChangeListene
             .launchIn(viewLifecycleOwner.lifecycleScope)
     }
 
-    private fun onPlaybackChanged(playback: TimeBasedMediaNavigator.Playback) {
+    private fun onPlaybackChanged(
+        playback: TimeBasedMediaNavigator.Playback
+    ) {
         Timber.v("onPlaybackChanged $playback")
         if (playback.state is MediaNavigator.State.Error) {
             onPlayerError()
@@ -112,7 +114,9 @@ class AudioReaderFragment : BaseReaderFragment(), SeekBar.OnSeekBarChangeListene
         }
     }
 
-    private fun updateTimeline(playback: TimeBasedMediaNavigator.Playback) {
+    private fun updateTimeline(
+        playback: TimeBasedMediaNavigator.Playback
+    ) {
         val currentItem = navigator.readingOrder.items[playback.index]
         binding.timelineBar.max = currentItem.duration?.inWholeSeconds?.toInt() ?: 0
         binding.timelineDuration.text = currentItem.duration?.formatElapsedTime()
@@ -163,7 +167,7 @@ class AudioReaderFragment : BaseReaderFragment(), SeekBar.OnSeekBarChangeListene
 
     override fun onStopTrackingTouch(seekBar: SeekBar) {
         Timber.d("onStopTrackingTouch")
-        navigator.seek(checkNotNull(seekingItem), seekBar.progress.seconds)
+        navigator.skipTo(checkNotNull(seekingItem), seekBar.progress.seconds)
         seekingItem = null
     }
 
@@ -181,7 +185,7 @@ class AudioReaderFragment : BaseReaderFragment(), SeekBar.OnSeekBarChangeListene
             }
             is MediaNavigator.State.Ended -> {
                 model.viewModelScope.launch {
-                    navigator.seek(0, Duration.ZERO)
+                    navigator.skipTo(0, Duration.ZERO)
                     navigator.play()
                 }
                 Unit
@@ -196,13 +200,13 @@ class AudioReaderFragment : BaseReaderFragment(), SeekBar.OnSeekBarChangeListene
 
     private fun onSkipForward(@Suppress("UNUSED_PARAMETER") view: View) {
         model.viewModelScope.launch {
-            navigator.goForward()
+            navigator.skipForward()
         }
     }
 
     private fun onSkipBackward(@Suppress("UNUSED_PARAMETER") view: View) {
         model.viewModelScope.launch {
-            navigator.goBackward()
+            navigator.skipBackward()
         }
     }
 

@@ -1,12 +1,17 @@
+/*
+ * Copyright 2021 Readium Foundation. All rights reserved.
+ * Use of this source code is governed by the BSD-style license
+ * available in the top-level LICENSE file of the project.
+ */
+
 package org.readium.r2.navigator.util
 
-import org.readium.r2.navigator.VisualNavigator
-import org.readium.r2.navigator.goLeft
-import org.readium.r2.navigator.goRight
+import org.readium.r2.navigator.OverflowNavigator
 import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.Key
 import org.readium.r2.navigator.input.KeyEvent
 import org.readium.r2.navigator.input.TapEvent
+import org.readium.r2.navigator.preferences.ReadingProgression
 import org.readium.r2.shared.ExperimentalReadiumApi
 
 /**
@@ -33,6 +38,7 @@ import org.readium.r2.shared.ExperimentalReadiumApi
  */
 @ExperimentalReadiumApi
 public class DirectionalNavigationAdapter(
+    private val navigator: OverflowNavigator,
     private val tapEdges: Set<TapEdge> = setOf(TapEdge.Horizontal),
     private val handleTapsWhileScrolling: Boolean = false,
     private val minimumHorizontalEdgeSize: Double = 80.0,
@@ -49,7 +55,7 @@ public class DirectionalNavigationAdapter(
         Horizontal, Vertical;
     }
 
-    override fun onTap(navigator: VisualNavigator, event: TapEvent): Boolean {
+    override fun onTap(event: TapEvent): Boolean {
         if (navigator.presentation.value.scroll && !handleTapsWhileScrolling) {
             return false
         }
@@ -89,7 +95,7 @@ public class DirectionalNavigationAdapter(
         return false
     }
 
-    override fun onKey(navigator: VisualNavigator, event: KeyEvent): Boolean {
+    override fun onKey(event: KeyEvent): Boolean {
         if (event.type != KeyEvent.Type.Down || event.modifiers.isNotEmpty()) {
             return false
         }
@@ -100,6 +106,32 @@ public class DirectionalNavigationAdapter(
             Key.ArrowLeft -> navigator.goLeft(animated = animatedTransition)
             Key.ArrowRight -> navigator.goRight(animated = animatedTransition)
             else -> false
+        }
+    }
+
+    /**
+     * Moves to the left content portion (eg. page) relative to the reading progression direction.
+     */
+    private fun OverflowNavigator.goLeft(animated: Boolean = false): Boolean {
+        return when (presentation.value.readingProgression) {
+            ReadingProgression.LTR ->
+                goBackward(animated = animated)
+
+            ReadingProgression.RTL ->
+                goForward(animated = animated)
+        }
+    }
+
+    /**
+     * Moves to the right content portion (eg. page) relative to the reading progression direction.
+     */
+    private fun OverflowNavigator.goRight(animated: Boolean = false): Boolean {
+        return when (presentation.value.readingProgression) {
+            ReadingProgression.LTR ->
+                goForward(animated = animated)
+
+            ReadingProgression.RTL ->
+                goBackward(animated = animated)
         }
     }
 }

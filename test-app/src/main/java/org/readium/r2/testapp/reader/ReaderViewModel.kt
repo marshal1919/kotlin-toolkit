@@ -19,8 +19,10 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.ExperimentalDecorator
+import org.readium.r2.navigator.epub.EpubNavigatorFragment
+import org.readium.r2.navigator.image.ImageNavigatorFragment
+import org.readium.r2.navigator.pdf.PdfNavigatorFragment
 import org.readium.r2.shared.ExperimentalReadiumApi
-import org.readium.r2.shared.Search
 import org.readium.r2.shared.UserException
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.LocatorCollection
@@ -28,10 +30,13 @@ import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.services.search.SearchIterator
 import org.readium.r2.shared.publication.services.search.SearchTry
 import org.readium.r2.shared.publication.services.search.search
+import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.Try
+import org.readium.r2.shared.util.Url
+import org.readium.r2.shared.util.resource.Resource
 import org.readium.r2.testapp.Application
-import org.readium.r2.testapp.bookshelf.BookRepository
-import org.readium.r2.testapp.domain.model.Highlight
+import org.readium.r2.testapp.data.BookRepository
+import org.readium.r2.testapp.data.model.Highlight
 import org.readium.r2.testapp.reader.preferences.UserPreferencesViewModel
 import org.readium.r2.testapp.reader.tts.TtsViewModel
 import org.readium.r2.testapp.search.SearchPagingSource
@@ -39,12 +44,15 @@ import org.readium.r2.testapp.utils.EventChannel
 import org.readium.r2.testapp.utils.createViewModelFactory
 import timber.log.Timber
 
-@OptIn(Search::class, ExperimentalDecorator::class, ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalDecorator::class, ExperimentalCoroutinesApi::class)
 class ReaderViewModel(
     private val bookId: Long,
     private val readerRepository: ReaderRepository,
     private val bookRepository: BookRepository
-) : ViewModel() {
+) : ViewModel(),
+    EpubNavigatorFragment.Listener,
+    ImageNavigatorFragment.Listener,
+    PdfNavigatorFragment.Listener {
 
     val readerInitData =
         try {
@@ -57,10 +65,13 @@ class ReaderViewModel(
     val publication: Publication =
         readerInitData.publication
 
-    val activityChannel: EventChannel<Event> =
+    val activityChannel: EventChannel<ActivityCommand> =
         EventChannel(Channel(Channel.BUFFERED), viewModelScope)
 
     val fragmentChannel: EventChannel<FeedbackEvent> =
+        EventChannel(Channel(Channel.BUFFERED), viewModelScope)
+
+    val searchChannel: EventChannel<SearchCommand> =
         EventChannel(Channel(Channel.BUFFERED), viewModelScope)
 
     val tts: TtsViewModel? = TtsViewModel(
@@ -74,9 +85,7 @@ class ReaderViewModel(
     )
 
     fun close() {
-        viewModelScope.launch {
-            readerRepository.close(bookId)
-        }
+        readerRepository.close(bookId)
     }
 
     fun saveProgression(locator: Locator) = viewModelScope.launch {
@@ -196,10 +205,10 @@ class ReaderViewModel(
         lastSearchQuery = query
         _searchLocators.value = emptyList()
         searchIterator = publication.search(query)
-            .onFailure { activityChannel.send(Event.Failure(it)) }
+            .onFailure { activityChannel.send(ActivityCommand.ToastError(it)) }
             .getOrNull()
         pagingSourceFactory.invalidate()
-        activityChannel.send(Event.StartNewSearch)
+        searchChannel.send(SearchCommand.StartNewSearch)
     }
 
     fun cancelSearch() = viewModelScope.launch {
@@ -238,6 +247,23 @@ class ReaderViewModel(
         SearchPagingSource(listener = PagingSourceListener())
     }
 
+    // Navigator.Listener
+
+    override fun onResourceLoadFailed(href: Url, error: Resource.Exception) {
+        val message = when (error) {
+            is Resource.Exception.OutOfMemory -> "The resource is too large to be rendered on this device: $href"
+            else -> "Failed to render the resource: $href"
+        }
+        activityChannel.send(ActivityCommand.ToastError(UserException(message, error)))
+    }
+
+    // HyperlinkNavigator.Listener
+    override fun onExternalLinkActivated(url: AbsoluteUrl) {
+        activityChannel.send(ActivityCommand.OpenExternalLink(url))
+    }
+
+    // Search
+
     inner class PagingSourceListener : SearchPagingSource.Listener {
         override suspend fun next(): SearchTry<LocatorCollection?> {
             val iterator = searchIterator ?: return Try.success(null)
@@ -253,16 +279,20 @@ class ReaderViewModel(
 
     // Events
 
-    sealed class Event {
-        object OpenOutlineRequested : Event()
-        object OpenDrmManagementRequested : Event()
-        object StartNewSearch : Event()
-        class Failure(val error: UserException) : Event()
+    sealed class ActivityCommand {
+        object OpenOutlineRequested : ActivityCommand()
+        object OpenDrmManagementRequested : ActivityCommand()
+        class OpenExternalLink(val url: AbsoluteUrl) : ActivityCommand()
+        class ToastError(val error: UserException) : ActivityCommand()
     }
 
     sealed class FeedbackEvent {
         object BookmarkSuccessfullyAdded : FeedbackEvent()
         object BookmarkFailed : FeedbackEvent()
+    }
+
+    sealed class SearchCommand {
+        object StartNewSearch : SearchCommand()
     }
 
     companion object {

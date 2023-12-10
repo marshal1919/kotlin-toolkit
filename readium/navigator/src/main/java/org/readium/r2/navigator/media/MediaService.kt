@@ -34,7 +34,8 @@ import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.PublicationId
 import org.readium.r2.shared.publication.services.cover
-import org.readium.r2.shared.resource.Resource
+import org.readium.r2.shared.util.Url
+import org.readium.r2.shared.util.resource.Resource
 import timber.log.Timber
 
 /**
@@ -147,7 +148,8 @@ public open class MediaService : MediaBrowserServiceCompat(), CoroutineScope by 
          */
         override fun locatorFromMediaId(mediaId: String, extras: Bundle?): Locator? {
             val navigator = currentNavigator.value ?: return null
-            val (publicationId, href) = mediaId.splitAt("#")
+            val (publicationId, rawHref) = mediaId.splitAt("#")
+            val href = rawHref?.let { Url(it) }
 
             if (navigator.publicationId != publicationId) {
                 return null

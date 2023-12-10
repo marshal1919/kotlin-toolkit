@@ -25,6 +25,8 @@ import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.testapp.R
 import org.readium.r2.testapp.reader.preferences.UserPreferencesBottomSheetDialogFragment
+import org.readium.r2.testapp.utils.extensions.readium.toDebugDescription
+import timber.log.Timber
 
 /*
  * Base reader fragment class
@@ -76,7 +78,9 @@ abstract class BaseReaderFragment : Fragment() {
                 override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
                     when (menuItem.itemId) {
                         R.id.toc -> {
-                            model.activityChannel.send(ReaderViewModel.Event.OpenOutlineRequested)
+                            model.activityChannel.send(
+                                ReaderViewModel.ActivityCommand.OpenOutlineRequested
+                            )
                             return true
                         }
                         R.id.bookmark -> {
@@ -91,7 +95,7 @@ abstract class BaseReaderFragment : Fragment() {
                         }
                         R.id.drm -> {
                             model.activityChannel.send(
-                                ReaderViewModel.Event.OpenDrmManagementRequested
+                                ReaderViewModel.ActivityCommand.OpenDrmManagementRequested
                             )
                             return true
                         }
@@ -115,6 +119,7 @@ abstract class BaseReaderFragment : Fragment() {
 
     protected fun showError(error: UserException) {
         val context = context ?: return
+        Timber.e(error.toDebugDescription(context))
         Toast.makeText(context, error.getUserMessage(context), Toast.LENGTH_LONG).show()
     }
 }

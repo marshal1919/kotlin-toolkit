@@ -8,19 +8,20 @@ package org.readium.r2.streamer
 
 import android.content.Context
 import org.readium.r2.shared.PdfSupport
-import org.readium.r2.shared.asset.Asset
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.protection.AdeptFallbackContentProtection
 import org.readium.r2.shared.publication.protection.ContentProtection
 import org.readium.r2.shared.publication.protection.LcpFallbackContentProtection
-import org.readium.r2.shared.resource.Resource
 import org.readium.r2.shared.util.Try
+import org.readium.r2.shared.util.asset.Asset
 import org.readium.r2.shared.util.getOrElse
 import org.readium.r2.shared.util.http.DefaultHttpClient
 import org.readium.r2.shared.util.http.HttpClient
 import org.readium.r2.shared.util.logging.WarningLogger
+import org.readium.r2.shared.util.mediatype.FormatRegistry
 import org.readium.r2.shared.util.mediatype.MediaTypeRetriever
 import org.readium.r2.shared.util.pdf.PdfDocumentFactory
+import org.readium.r2.shared.util.resource.Resource
 import org.readium.r2.streamer.parser.PublicationParser
 import org.readium.r2.streamer.parser.audio.AudioParser
 import org.readium.r2.streamer.parser.epub.EpubParser
@@ -28,7 +29,7 @@ import org.readium.r2.streamer.parser.image.ImageParser
 import org.readium.r2.streamer.parser.pdf.PdfParser
 import org.readium.r2.streamer.parser.readium.ReadiumWebPubParser
 
-internal typealias PublicationTry<SuccessT> = Try<SuccessT, Publication.OpeningException>
+internal typealias PublicationTry<SuccessT> = Try<SuccessT, Publication.OpenError>
 
 /**
  * Opens a Publication using a list of parsers.
@@ -53,6 +54,7 @@ public class PublicationFactory(
     parsers: List<PublicationParser> = emptyList(),
     ignoreDefaultParsers: Boolean = false,
     contentProtections: List<ContentProtection>,
+    formatRegistry: FormatRegistry,
     mediaTypeRetriever: MediaTypeRetriever,
     httpClient: HttpClient,
     pdfFactory: PdfDocumentFactory<*>?,
@@ -69,6 +71,7 @@ public class PublicationFactory(
             return PublicationFactory(
                 context = context,
                 contentProtections = contentProtections,
+                formatRegistry = FormatRegistry(),
                 mediaTypeRetriever = mediaTypeRetriever,
                 httpClient = DefaultHttpClient(mediaTypeRetriever),
                 pdfFactory = null,
@@ -97,7 +100,7 @@ public class PublicationFactory(
         if (!ignoreDefaultParsers) defaultParsers else emptyList()
 
     private val parserAssetFactory: ParserAssetFactory =
-        ParserAssetFactory(httpClient, mediaTypeRetriever)
+        ParserAssetFactory(httpClient, mediaTypeRetriever, formatRegistry)
 
     /**
      * Opens a [Publication] from the given asset.
@@ -106,10 +109,6 @@ public class PublicationFactory(
      * to true to prompt the user for its credentials when the publication is protected. However,
      * set it to false if you just want to import the [Publication] without reading its content, to
      * avoid prompting the user.
-     *
-     * When using Content Protections, you can use [sender] to provide a free object which can be
-     * used to give some context. For example, it could be the source Activity or Fragment which
-     * would be used to present a credentials dialog.
      *
      * The [warnings] logger can be used to observe non-fatal parsing warnings, caused by
      * publication authoring mistakes. This can be useful to warn users of potential rendering
@@ -122,20 +121,17 @@ public class PublicationFactory(
      *   publication, for example a password.
      * @param allowUserInteraction Indicates whether the user can be prompted, for example for its
      *   credentials.
-     * @param sender Free object that can be used by reading apps to give some UX context when
-     *   presenting dialogs.
      * @param onCreatePublication Transformation which will be applied on the Publication Builder.
      *   It can be used to modify the manifest, the root container or the list of service
      *   factories of the [Publication].
      * @param warnings Logger used to broadcast non-fatal parsing warnings.
-     * @return A [Publication] or a [Publication.OpeningException] in case of failure.
+     * @return A [Publication] or a [Publication.OpenError] in case of failure.
      */
     public suspend fun open(
         asset: Asset,
         contentProtectionScheme: ContentProtection.Scheme? = null,
         credentials: String? = null,
         allowUserInteraction: Boolean,
-        sender: Any? = null,
         onCreatePublication: Publication.Builder.() -> Unit = {},
         warnings: WarningLogger? = null
     ): PublicationTry<Publication> {
@@ -156,7 +152,6 @@ public class PublicationFactory(
                 contentProtectionScheme,
                 credentials,
                 allowUserInteraction,
-                sender,
                 compositeOnCreatePublication,
                 warnings
             )
@@ -167,7 +162,7 @@ public class PublicationFactory(
         asset: Asset,
         onCreatePublication: Publication.Builder.() -> Unit,
         warnings: WarningLogger?
-    ): Try<Publication, Publication.OpeningException> {
+    ): Try<Publication, Publication.OpenError> {
         val parserAsset = parserAssetFactory.createParserAsset(asset)
             .getOrElse { return Try.failure(it) }
         return openParserAsset(parserAsset, onCreatePublication, warnings)
@@ -178,14 +173,13 @@ public class PublicationFactory(
         contentProtectionScheme: ContentProtection.Scheme,
         credentials: String?,
         allowUserInteraction: Boolean,
-        sender: Any?,
         onCreatePublication: Publication.Builder.() -> Unit,
         warnings: WarningLogger?
-    ): Try<Publication, Publication.OpeningException> {
+    ): Try<Publication, Publication.OpenError> {
         val protectedAsset = contentProtections[contentProtectionScheme]
-            ?.open(asset, credentials, allowUserInteraction, sender)
+            ?.open(asset, credentials, allowUserInteraction)
             ?.getOrElse { return Try.failure(it) }
-            ?: return Try.failure(Publication.OpeningException.Forbidden())
+            ?: return Try.failure(Publication.OpenError.Forbidden())
 
         val parserAsset = PublicationParser.Asset(
             protectedAsset.mediaType,
@@ -204,7 +198,7 @@ public class PublicationFactory(
         publicationAsset: PublicationParser.Asset,
         onCreatePublication: Publication.Builder.() -> Unit = {},
         warnings: WarningLogger? = null
-    ): Try<Publication, Publication.OpeningException> {
+    ): Try<Publication, Publication.OpenError> {
         val builder = parse(publicationAsset, warnings)
             .getOrElse { return Try.failure(wrapParserException(it)) }
 
@@ -230,26 +224,26 @@ public class PublicationFactory(
         return Try.failure(PublicationParser.Error.FormatNotSupported())
     }
 
-    private fun wrapParserException(e: PublicationParser.Error): Publication.OpeningException =
+    private fun wrapParserException(e: PublicationParser.Error): Publication.OpenError =
         when (e) {
             is PublicationParser.Error.FormatNotSupported ->
-                Publication.OpeningException.UnsupportedAsset("Cannot find a parser for this asset")
+                Publication.OpenError.UnsupportedAsset("Cannot find a parser for this asset")
             is PublicationParser.Error.IO ->
                 when (e.resourceError) {
                     is Resource.Exception.BadRequest, is Resource.Exception.Other ->
-                        Publication.OpeningException.Unexpected(e)
+                        Publication.OpenError.Unknown(e)
                     is Resource.Exception.Forbidden ->
-                        Publication.OpeningException.Forbidden(e)
+                        Publication.OpenError.Forbidden(e)
                     is Resource.Exception.NotFound ->
-                        Publication.OpeningException.ParsingFailed(e)
+                        Publication.OpenError.InvalidAsset(e)
                     is Resource.Exception.OutOfMemory ->
-                        Publication.OpeningException.OutOfMemory(e)
+                        Publication.OpenError.OutOfMemory(e)
                     is Resource.Exception.Unavailable, is Resource.Exception.Offline ->
-                        Publication.OpeningException.Unavailable(e)
+                        Publication.OpenError.Unavailable(e)
                 }
             is PublicationParser.Error.OutOfMemory ->
-                Publication.OpeningException.OutOfMemory(e)
+                Publication.OpenError.OutOfMemory(e)
             is PublicationParser.Error.ParsingFailed ->
-                Publication.OpeningException.ParsingFailed(e)
+                Publication.OpenError.InvalidAsset(e)
         }
 }

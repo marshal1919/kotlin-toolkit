@@ -9,23 +9,22 @@
 
 package org.readium.r2.opds
 
-import java.net.URL
 import org.joda.time.DateTime
 import org.readium.r2.shared.extensions.toList
 import org.readium.r2.shared.extensions.toMap
 import org.readium.r2.shared.opds.*
-import org.readium.r2.shared.parser.xml.ElementNode
-import org.readium.r2.shared.parser.xml.XmlParser
 import org.readium.r2.shared.publication.*
 import org.readium.r2.shared.toJSON
-import org.readium.r2.shared.util.Href
 import org.readium.r2.shared.util.Try
+import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.http.DefaultHttpClient
 import org.readium.r2.shared.util.http.HttpClient
 import org.readium.r2.shared.util.http.HttpRequest
 import org.readium.r2.shared.util.http.fetchWithDecoder
 import org.readium.r2.shared.util.mediatype.MediaType
 import org.readium.r2.shared.util.mediatype.MediaTypeRetriever
+import org.readium.r2.shared.util.xml.ElementNode
+import org.readium.r2.shared.util.xml.XmlParser
 
 public enum class OPDSParserError {
     MissingTitle
@@ -51,22 +50,20 @@ public class OPDS1Parser {
         public suspend fun parseUrlString(
             url: String,
             client: HttpClient = DefaultHttpClient(MediaTypeRetriever())
-        ): Try<ParseData, Exception> {
-            return client.fetchWithDecoder(HttpRequest(url)) {
-                this.parse(it.body, URL(url))
-            }
-        }
+        ): Try<ParseData, Exception> =
+            parseRequest(HttpRequest(url), client)
 
         public suspend fun parseRequest(
             request: HttpRequest,
             client: HttpClient = DefaultHttpClient(MediaTypeRetriever())
         ): Try<ParseData, Exception> {
             return client.fetchWithDecoder(request) {
-                this.parse(it.body, URL(request.url))
+                val url = Url(request.url) ?: throw Exception("Invalid URL")
+                this.parse(it.body, url)
             }
         }
 
-        public fun parse(xmlData: ByteArray, url: URL): ParseData {
+        public fun parse(xmlData: ByteArray, url: Url): ParseData {
             val root = XmlParser().parse(xmlData.inputStream())
             return if (root.name == "feed") {
                 ParseData(parseFeed(root, url), null, 1)
@@ -75,10 +72,10 @@ public class OPDS1Parser {
             }
         }
 
-        private fun parseFeed(root: ElementNode, url: URL): Feed {
+        private fun parseFeed(root: ElementNode, url: Url): Feed {
             val feedTitle = root.getFirst("title", Namespaces.Atom)?.text
                 ?: throw Exception(OPDSParserError.MissingTitle.name)
-            val feed = Feed(feedTitle, 1, url)
+            val feed = Feed.Builder(feedTitle, 1, url)
             val tmpDate = root.getFirst("updated", Namespaces.Atom)?.text
             feed.metadata.modified = tmpDate?.let { DateTime(it).toDate() }
 
@@ -97,7 +94,7 @@ public class OPDS1Parser {
                 var collectionLink: Link? = null
                 val links = entry.get("link", Namespaces.Atom)
                 for (link in links) {
-                    val href = link.getAttr("href")
+                    val href = link.getAttr("href")?.let { Url(it) }
                     val rel = link.getAttr("rel")
                     if (rel != null) {
                         if (rel.startsWith("http://opds-spec.org/acquisition")) {
@@ -105,7 +102,7 @@ public class OPDS1Parser {
                         }
                         if (href != null && (rel == "collection" || rel == "http://opds-spec.org/group")) {
                             collectionLink = Link(
-                                href = Href(href, baseHref = feed.href.toString()).percentEncodedString,
+                                href = feed.href.resolve(href),
                                 title = link.getAttr("title"),
                                 rels = setOf("collection")
                             )
@@ -123,7 +120,7 @@ public class OPDS1Parser {
                     }
                 } else {
                     val link = entry.getFirst("link", Namespaces.Atom)
-                    val href = link?.getAttr("href")
+                    val href = link?.getAttr("href")?.let { Url(it) }
                     if (href != null) {
                         val otherProperties = mutableMapOf<String, Any>()
                         val facetElementCount = link.getAttrNs("count", Namespaces.Thread)?.toInt()
@@ -132,7 +129,7 @@ public class OPDS1Parser {
                         }
 
                         val newLink = Link(
-                            href = Href(href, baseHref = feed.href.toString()).percentEncodedString,
+                            href = feed.href.resolve(href),
                             mediaType = mediaTypeRetriever.retrieve(
                                 mediaType = link.getAttr("type")
                             ),
@@ -151,8 +148,8 @@ public class OPDS1Parser {
             }
             // Parse links
             for (link in root.get("link", Namespaces.Atom)) {
-                val hrefAttr = link.getAttr("href") ?: continue
-                val href = Href(hrefAttr, baseHref = feed.href.toString()).percentEncodedString
+                val hrefAttr = link.getAttr("href")?.let { Url(it) } ?: continue
+                val href = feed.href.resolve(hrefAttr)
                 val title = link.getAttr("title")
                 val type = mediaTypeRetriever.retrieve(link.getAttr("type"))
                 val rels = listOfNotNull(link.getAttr("rel")).toSet()
@@ -173,10 +170,12 @@ public class OPDS1Parser {
                     )
                     addFacet(feed, newLink, facetGroupName)
                 } else {
-                    feed.links.add(Link(href = href, mediaType = type, title = title, rels = rels))
+                    feed.links.add(
+                        Link(href = href, mediaType = type, title = title, rels = rels)
+                    )
                 }
             }
-            return feed
+            return feed.build()
         }
 
         private fun parseMimeType(mimeTypeString: String): MimeTypeParameters {
@@ -197,7 +196,7 @@ public class OPDS1Parser {
             feed: Feed,
             client: HttpClient = DefaultHttpClient(MediaTypeRetriever())
         ): Try<String?, Exception> {
-            var openSearchURL: URL? = null
+            var openSearchURL: String? = null
             var selfMimeType: MediaType? = null
 
             for (link in feed.links) {
@@ -206,7 +205,7 @@ public class OPDS1Parser {
                         selfMimeType = link.mediaType
                     }
                 } else if (link.rels.contains("search")) {
-                    openSearchURL = URL(link.href)
+                    openSearchURL = link.href.toString()
                 }
             }
 
@@ -247,14 +246,14 @@ public class OPDS1Parser {
             }
         }
 
-        private fun parseEntry(entry: ElementNode, baseUrl: URL): Publication? {
+        private fun parseEntry(entry: ElementNode, baseUrl: Url): Publication? {
             // A title is mandatory
             val title = entry.getFirst("title", Namespaces.Atom)?.text
                 ?: return null
 
             var links = entry.get("link", Namespaces.Atom)
                 .mapNotNull { element ->
-                    val href = element.getAttr("href")
+                    val href = element.getAttr("href")?.let { Url(it) }
                     val rel = element.getAttr("rel")
                     if (href == null || rel == "collection" || rel == "http://opds-spec.org/group") {
                         return@mapNotNull null
@@ -277,7 +276,7 @@ public class OPDS1Parser {
                     }
 
                     Link(
-                        href = Href(href, baseHref = baseUrl.toString()).percentEncodedString,
+                        href = baseUrl.resolve(href),
                         mediaType = mediaTypeRetriever.retrieve(element.getAttr("type")),
                         title = element.getAttr("title"),
                         rels = listOfNotNull(rel).toSet(),
@@ -336,6 +335,7 @@ public class OPDS1Parser {
                                     localizedName = LocalizedString(name),
                                     links = listOfNotNull(
                                         element.getFirst("uri", Namespaces.Atom)?.text
+                                            ?.let { Url(it) }
                                             ?.let { Link(href = it) }
                                     )
                                 )
@@ -357,20 +357,20 @@ public class OPDS1Parser {
             return Publication(manifest)
         }
 
-        private fun addFacet(feed: Feed, link: Link, title: String) {
+        private fun addFacet(feed: Feed.Builder, link: Link, title: String) {
             for (facet in feed.facets) {
                 if (facet.metadata.title == title) {
                     facet.links.add(link)
                     return
                 }
             }
-            val newFacet = Facet(title = title)
+            val newFacet = Facet.Builder(title = title)
             newFacet.links.add(link)
             feed.facets.add(newFacet)
         }
 
         private fun addPublicationInGroup(
-            feed: Feed,
+            feed: Feed.Builder,
             publication: Publication,
             collectionLink: Link
         ) {
@@ -387,14 +387,14 @@ public class OPDS1Parser {
                 val selfLink = collectionLink.copy(
                     rels = collectionLink.rels + "self"
                 )
-                val newGroup = Group(title = title)
+                val newGroup = Group.Builder(title = title)
                 newGroup.links.add(selfLink)
                 newGroup.publications.add(publication)
                 feed.groups.add(newGroup)
             }
         }
 
-        private fun addNavigationInGroup(feed: Feed, link: Link, collectionLink: Link) {
+        private fun addNavigationInGroup(feed: Feed.Builder, link: Link, collectionLink: Link) {
             for (group in feed.groups) {
                 for (l in group.links) {
                     if (l.href == collectionLink.href) {
@@ -408,7 +408,7 @@ public class OPDS1Parser {
                 val selfLink = collectionLink.copy(
                     rels = collectionLink.rels + "self"
                 )
-                val newGroup = Group(title = title)
+                val newGroup = Group.Builder(title = title)
                 newGroup.links.add(selfLink)
                 newGroup.navigation.add(link)
                 feed.groups.add(newGroup)

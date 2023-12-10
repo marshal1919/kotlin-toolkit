@@ -34,6 +34,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.readium.navigator.media2.MediaNavigator.Companion.create
 import org.readium.r2.navigator.Navigator
+import org.readium.r2.navigator.extensions.normalizeLocator
+import org.readium.r2.shared.DelicateReadiumApi
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
@@ -53,7 +55,7 @@ import timber.log.Timber
  * providing [create] with it. If you don't, ExoPlayer will be used, without cache.
  * You can build your own [SessionPlayer] based on [ExoPlayer] using [ExoPlayerDataSource].
  */
-@ExperimentalMedia2
+@Deprecated("Use the new AudioNavigator from the readium-navigator-media-audio module.")
 @OptIn(ExperimentalTime::class)
 public class MediaNavigator private constructor(
     override val publication: Publication,
@@ -242,7 +244,11 @@ public class MediaNavigator private constructor(
     /**
      * Seeks to the given locator.
      */
+    @OptIn(DelicateReadiumApi::class)
     public suspend fun go(locator: Locator): Try<Unit, Exception> {
+        @Suppress("NAME_SHADOWING")
+        val locator = publication.normalizeLocator(locator)
+
         val itemIndex = publication.readingOrder.indexOfFirstWithHref(locator.href)
             ?: return Try.failure(Exception.InvalidArgument("Invalid href ${locator.href}."))
         val position = locator.locations.time ?: Duration.ZERO
@@ -377,12 +383,12 @@ public class MediaNavigator private constructor(
         return true
     }
 
-    override fun goForward(animated: Boolean, completion: () -> Unit): Boolean {
+    public fun goForward(animated: Boolean, completion: () -> Unit): Boolean {
         launchAndRun({ goForward() }, completion)
         return true
     }
 
-    override fun goBackward(animated: Boolean, completion: () -> Unit): Boolean {
+    public fun goBackward(animated: Boolean, completion: () -> Unit): Boolean {
         launchAndRun({ goBackward() }, completion)
         return true
     }

@@ -14,11 +14,14 @@ import kotlinx.parcelize.Parcelize
 import kotlinx.parcelize.WriteWith
 import org.json.JSONArray
 import org.json.JSONObject
+import org.readium.r2.shared.DelicateReadiumApi
 import org.readium.r2.shared.JSONable
 import org.readium.r2.shared.extensions.*
 import org.readium.r2.shared.toJSON
+import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.logging.WarningLogger
 import org.readium.r2.shared.util.logging.log
+import org.readium.r2.shared.util.mediatype.MediaType
 import org.readium.r2.shared.util.mediatype.MediaTypeRetriever
 
 /**
@@ -35,8 +38,8 @@ import org.readium.r2.shared.util.mediatype.MediaTypeRetriever
  */
 @Parcelize
 public data class Locator(
-    val href: String,
-    val type: String,
+    val href: Url,
+    val mediaType: MediaType,
     val title: String? = null,
     val locations: Locations = Locations(),
     val text: Text = Text()
@@ -77,7 +80,9 @@ public data class Locator(
 
         public companion object {
 
-            public fun fromJSON(json: JSONObject?): Locations {
+            public fun fromJSON(
+                json: JSONObject?
+            ): Locations {
                 val fragments = json?.optStringsFromArrayOrSingle("fragments", remove = true)?.takeIf { it.isNotEmpty() }
                     ?: json?.optStringsFromArrayOrSingle("fragment", remove = true)
                     ?: emptyList()
@@ -134,14 +139,17 @@ public data class Locator(
         }
 
         public fun substring(range: IntRange): Text {
-            highlight ?: return this
-            return tryOr(this) {
-                copy(
-                    before = (before ?: "") + highlight.substring(0, range.first),
-                    highlight = highlight.substring(range),
-                    after = highlight.substring(range.last) + (after ?: "")
-                )
-            }
+            if (highlight.isNullOrBlank()) return this
+
+            val fixedRange = range.first.coerceIn(0, highlight.length)..range.last.coerceIn(
+                0,
+                highlight.length - 1
+            )
+            return copy(
+                before = (before ?: "") + highlight.substring(0, fixedRange.first),
+                highlight = highlight.substring(fixedRange),
+                after = highlight.substring((fixedRange.last + 1).coerceAtMost(highlight.length)) + (after ?: "")
+            )
         }
 
         public companion object {
@@ -174,16 +182,53 @@ public data class Locator(
     )
 
     override fun toJSON(): JSONObject = JSONObject().apply {
-        put("href", href)
-        put("type", type)
+        put("href", href.toString())
+        put("type", mediaType.toString())
         put("title", title)
         putIfNotEmpty("locations", locations)
         putIfNotEmpty("text", text)
     }
 
+    @Deprecated(
+        "Use [mediaType.toString()] instead",
+        ReplaceWith("mediaType.toString()"),
+        level = DeprecationLevel.ERROR
+    )
+    public val type: String get() = throw NotImplementedError()
+
     public companion object {
 
-        public fun fromJSON(json: JSONObject?, warnings: WarningLogger? = null): Locator? {
+        /**
+         * Creates a [Locator] from its JSON representation.
+         */
+        public fun fromJSON(
+            json: JSONObject?,
+            mediaTypeRetriever: MediaTypeRetriever = MediaTypeRetriever(),
+            warnings: WarningLogger? = null
+        ): Locator? =
+            fromJSON(json, mediaTypeRetriever, warnings, withLegacyHref = false)
+
+        /**
+         * Creates a [Locator] from its legacy JSON representation.
+         *
+         * Only use this API when you are upgrading to Readium 3.x and migrating the [Locator]
+         * objects stored in your database. See the migration guide for more information.
+         */
+        @DelicateReadiumApi
+        public fun fromLegacyJSON(
+            json: JSONObject?,
+            mediaTypeRetriever: MediaTypeRetriever = MediaTypeRetriever(),
+            warnings: WarningLogger? = null
+        ): Locator? =
+            fromJSON(json, mediaTypeRetriever, warnings, withLegacyHref = true)
+
+        @OptIn(DelicateReadiumApi::class)
+        private fun fromJSON(
+            json: JSONObject?,
+            mediaTypeRetriever: MediaTypeRetriever = MediaTypeRetriever(),
+            warnings: WarningLogger? = null,
+            withLegacyHref: Boolean = false
+        ): Locator? {
             val href = json?.optNullableString("href")
             val type = json?.optNullableString("type")
             if (href == null || type == null) {
@@ -191,9 +236,25 @@ public data class Locator(
                 return null
             }
 
+            val url = (
+                if (withLegacyHref) {
+                    Url.fromLegacyHref(href)
+                } else {
+                    Url(href)
+                }
+                ) ?: run {
+                warnings?.log(Locator::class.java, "[href] is not a valid URL", json)
+                return null
+            }
+
+            val mediaType = MediaType(type) ?: run {
+                warnings?.log(Locator::class.java, "[type] is not a valid media type", json)
+                return null
+            }
+
             return Locator(
-                href = href,
-                type = type,
+                href = url,
+                mediaType = mediaTypeRetriever.retrieve(mediaType),
                 title = json.optNullableString("title"),
                 locations = Locations.fromJSON(json.optJSONObject("locations")),
                 text = Text.fromJSON(json.optJSONObject("text"))
@@ -202,9 +263,10 @@ public data class Locator(
 
         public fun fromJSONArray(
             json: JSONArray?,
+            mediaTypeRetriever: MediaTypeRetriever = MediaTypeRetriever(),
             warnings: WarningLogger? = null
         ): List<Locator> {
-            return json.parseObjects { fromJSON(it as? JSONObject, warnings) }
+            return json.parseObjects { fromJSON(it as? JSONObject, mediaTypeRetriever, warnings) }
         }
     }
 }
@@ -289,7 +351,11 @@ public data class LocatorCollection(
                     mediaTypeRetriever,
                     warnings = warnings
                 ),
-                locators = Locator.fromJSONArray(json?.optJSONArray("locators"), warnings)
+                locators = Locator.fromJSONArray(
+                    json?.optJSONArray("locators"),
+                    mediaTypeRetriever,
+                    warnings
+                )
             )
         }
     }

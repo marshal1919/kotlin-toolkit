@@ -15,9 +15,7 @@ import kotlin.reflect.KClass
 import kotlinx.parcelize.Parcelize
 import org.json.JSONObject
 import org.readium.r2.shared.*
-import org.readium.r2.shared.BuildConfig.DEBUG
 import org.readium.r2.shared.extensions.*
-import org.readium.r2.shared.extensions.removeLastComponent
 import org.readium.r2.shared.publication.epub.listOfAudioClips
 import org.readium.r2.shared.publication.epub.listOfVideoClips
 import org.readium.r2.shared.publication.services.CacheService
@@ -29,16 +27,16 @@ import org.readium.r2.shared.publication.services.PositionsService
 import org.readium.r2.shared.publication.services.WebPositionsService
 import org.readium.r2.shared.publication.services.content.ContentService
 import org.readium.r2.shared.publication.services.search.SearchService
-import org.readium.r2.shared.resource.Container
-import org.readium.r2.shared.resource.EmptyContainer
-import org.readium.r2.shared.resource.Resource
-import org.readium.r2.shared.resource.ResourceTry
-import org.readium.r2.shared.resource.fallback
 import org.readium.r2.shared.util.Closeable
 import org.readium.r2.shared.util.Error
-import org.readium.r2.shared.util.MessageError
 import org.readium.r2.shared.util.ThrowableError
+import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.mediatype.MediaType
+import org.readium.r2.shared.util.resource.Container
+import org.readium.r2.shared.util.resource.EmptyContainer
+import org.readium.r2.shared.util.resource.Resource
+import org.readium.r2.shared.util.resource.ResourceTry
+import org.readium.r2.shared.util.resource.fallback
 
 internal typealias ServiceFactory = (Publication.Service.Context) -> Publication.Service?
 
@@ -78,33 +76,33 @@ public class Publication(
     public var cssStyle: String? = null
 ) : PublicationServicesHolder {
 
-    private val _manifest: Manifest
+    public val manifest: Manifest
 
     private val services = ListPublicationServicesHolder()
 
     init {
         services.services = servicesBuilder.build(Service.Context(manifest, container, services))
-        _manifest = manifest.copy(
+        this.manifest = manifest.copy(
             links = manifest.links + services.services.map(Service::links).flatten()
         )
     }
 
     // Shortcuts to manifest properties
 
-    public val context: List<String> get() = _manifest.context
-    public val metadata: Metadata get() = _manifest.metadata
-    public val links: List<Link> get() = _manifest.links
+    public val context: List<String> get() = manifest.context
+    public val metadata: Metadata get() = manifest.metadata
+    public val links: List<Link> get() = manifest.links
 
     /** Identifies a list of resources in reading order for the publication. */
-    public val readingOrder: List<Link> get() = _manifest.readingOrder
+    public val readingOrder: List<Link> get() = manifest.readingOrder
 
     /** Identifies resources that are necessary for rendering the publication. */
-    public val resources: List<Link> get() = _manifest.resources
+    public val resources: List<Link> get() = manifest.resources
 
     /** Identifies the collection that contains a table of contents. */
-    public val tableOfContents: List<Link> get() = _manifest.tableOfContents
+    public val tableOfContents: List<Link> get() = manifest.tableOfContents
 
-    public val subcollections: Map<String, List<PublicationCollection>> get() = _manifest.subcollections
+    public val subcollections: Map<String, List<PublicationCollection>> get() = manifest.subcollections
 
     @Deprecated(
         "Use conformsTo() to check the kind of a publication.",
@@ -118,22 +116,53 @@ public class Publication(
     /**
      * Returns the RWPM JSON representation for this [Publication]'s manifest, as a string.
      */
+    @Deprecated(
+        "Jsonify the manifest by yourself.",
+        replaceWith = ReplaceWith("""manifest.toJSON().toString().replace("\\/", "/")"""),
+        DeprecationLevel.ERROR
+    )
     public val jsonManifest: String
-        get() = _manifest.toJSON().toString().replace("\\/", "/")
+        get() = manifest.toJSON().toString().replace("\\/", "/")
 
     /**
-     * The URL where this publication is served, computed from the [Link] with `self` relation.
+     * The URL from which the publication resources are relative to, computed from the [Link] with
+     * `self` relation.
      */
+    public val baseUrl: Url?
+        get() = links.firstWithRel("self")?.href
+            ?.takeUnless { it.isTemplated }
+            ?.resolve()
 
-    public val baseUrl: URL?
-        get() = links.firstWithRel("self")
-            ?.let { it.href.toUrlOrNull()?.removeLastComponent() }
+    /**
+     * Returns the URL to the resource represented by the given [locator], relative to the
+     * publication's link with `self` relation.
+     */
+    public fun url(locator: Locator): Url =
+        baseUrl?.let { locator.href.resolve(it) } ?: locator.href
+
+    /**
+     * Returns the URL to the resource represented by the given [link], relative to the
+     * publication's link with `self` relation.
+     *
+     * If the link HREF is a template, the [parameters] are used to expand it according to RFC 6570.
+     */
+    public fun url(link: Link, parameters: Map<String, String> = emptyMap()): Url =
+        url(link.href, parameters)
+
+    /**
+     * Returns the URL to the resource represented by the given [href], relative to the
+     * publication's link with `self` relation.
+     *
+     * If the HREF is a template, the [parameters] are used to expand it according to RFC 6570.
+     */
+    public fun url(href: Href, parameters: Map<String, String> = emptyMap()): Url =
+        href.resolve(baseUrl, parameters = parameters)
 
     /**
      * Returns whether this publication conforms to the given Readium Web Publication Profile.
      */
     public fun conformsTo(profile: Profile): Boolean =
-        _manifest.conformsTo(profile)
+        manifest.conformsTo(profile)
 
     /**
      * Finds the first [Link] with the given HREF in the publication's links.
@@ -144,43 +173,50 @@ public class Publication(
      * If there's no match, tries again after removing any query parameter and anchor from the
      * given [href].
      */
-    public fun linkWithHref(href: String): Link? = _manifest.linkWithHref(href)
+    public fun linkWithHref(href: Url): Link? = manifest.linkWithHref(href)
 
     /**
      * Finds the first [Link] having the given [rel] in the publications's links.
      */
-    public fun linkWithRel(rel: String): Link? = _manifest.linkWithRel(rel)
+    public fun linkWithRel(rel: String): Link? = manifest.linkWithRel(rel)
 
     /**
      * Finds all [Link]s having the given [rel] in the publications's links.
      */
-    public fun linksWithRel(rel: String): List<Link> = _manifest.linksWithRel(rel)
+    public fun linksWithRel(rel: String): List<Link> = manifest.linksWithRel(rel)
 
     /**
      * Creates a new [Locator] object from a [Link] to a resource of this publication.
      *
      * Returns null if the resource is not found in this publication.
      */
-    public fun locatorFromLink(link: Link): Locator? = _manifest.locatorFromLink(link)
+    public fun locatorFromLink(link: Link): Locator? = manifest.locatorFromLink(link)
 
     /**
      * Returns the resource targeted by the given non-templated [link].
      */
-    public fun get(link: Link): Resource {
-        if (DEBUG) { require(!link.templated) { "You must expand templated links before calling [Publication.get]" } }
+    public fun get(link: Link): Resource =
+        get(link.url(), link.mediaType)
 
-        services.services.forEach { service -> service.get(link)?.let { return it } }
+    /**
+     * Returns the resource targeted by the given [href].
+     */
+    public fun get(href: Url): Resource =
+        get(href, linkWithHref(href)?.mediaType)
 
-        return container.get(link.href)
+    private fun get(href: Url, mediaType: MediaType?): Resource {
+        services.services.forEach { service -> service.get(href)?.let { return it } }
+
+        return container.get(href)
             .fallback { error ->
                 if (error is Resource.Exception.NotFound) {
                     // Try again after removing query and fragment.
-                    container.get(link.href.takeWhile { it !in "#?" })
+                    container.get(href.removeQuery().removeFragment())
                 } else {
                     null
                 }
             }
-            .withMediaType(link.mediaType)
+            .withMediaType(mediaType)
     }
 
     /**
@@ -280,10 +316,7 @@ public class Publication(
             ),
             level = DeprecationLevel.ERROR
         )
-        public fun fromJSON(
-            json: JSONObject?,
-            normalizeHref: LinkHrefNormalizer = LinkHrefNormalizerIdentity
-        ): Publication? {
+        public fun fromJSON(json: JSONObject?): Publication? {
             throw NotImplementedError()
         }
     }
@@ -363,7 +396,7 @@ public class Publication(
          * @return The [Resource] containing the response, or null if the service doesn't
          * recognize this request.
          */
-        public fun get(link: Link): Resource? = null
+        public fun get(href: Url): Resource? = null
 
         /**
          * Closes any opened file handles, removes temporary files, etc.
@@ -463,78 +496,74 @@ public class Publication(
     /**
      * Errors occurring while opening a Publication.
      */
-    public sealed class OpeningException : Error {
+    public sealed class OpenError(
+        override val message: String,
+        override val cause: Error? = null
+    ) : Error {
 
         /**
          * The file format could not be recognized by any parser.
          */
-        public class UnsupportedAsset(override val cause: Error? = null) : OpeningException() {
+        public class UnsupportedAsset(
+            message: String,
+            cause: Error?
+        ) : OpenError(message, cause) {
+            public constructor(message: String) : this(message, null)
+            public constructor(cause: Error? = null) : this("Asset is not supported.", cause)
+        }
 
-            public constructor(message: String) : this(MessageError(message))
-
-            override val message: String =
-                "Asset is not supported."
+        /**
+         * The publication parsing failed with the given underlying error.
+         */
+        public class InvalidAsset(
+            message: String,
+            cause: Error? = null
+        ) : OpenError(message, cause) {
+            public constructor(cause: Error?) : this(
+                "The asset seems corrupted so the publication cannot be opened.",
+                cause
+            )
         }
 
         /**
          * The publication file was not found on the file system.
          */
-        public class NotFound(override val cause: Error? = null) : OpeningException() {
-
-            override val message: String =
-                "Asset couldn't be found."
-        }
-
-        /**
-         * The publication parser failed with the given underlying exception.
-         */
-        public class ParsingFailed(override val cause: Error? = null) : OpeningException() {
-
-            override val message: String =
-                "The asset is corrupted so the publication cannot be opened."
-        }
+        public class NotFound(cause: Error? = null) :
+            OpenError("Asset could not be found.", cause)
 
         /**
          * We're not allowed to open the publication at all, for example because it expired.
          */
-        public class Forbidden(override val cause: Error? = null) : OpeningException() {
-
-            override val message: String =
-                "You are not allowed to open this publication."
-        }
+        public class Forbidden(cause: Error? = null) :
+            OpenError("You are not allowed to open this publication.", cause)
 
         /**
          * The publication can't be opened at the moment, for example because of a networking error.
          * This error is generally temporary, so the operation may be retried or postponed.
          */
-        public class Unavailable(override val cause: Error? = null) : OpeningException() {
-
-            override val message: String =
-                "Not available, please try again later."
-        }
+        public class Unavailable(cause: Error? = null) :
+            OpenError("The publication is not available at the moment.", cause)
 
         /**
          * The provided credentials are incorrect and we can't open the publication in a
          * `restricted` state (e.g. for a password-protected ZIP).
          */
-        public class IncorrectCredentials(override val cause: Error? = null) : OpeningException() {
+        public class IncorrectCredentials(cause: Error? = null) :
+            OpenError("Provided credentials were incorrect.", cause)
 
-            override val message: String =
-                "Provided credentials were incorrect."
-        }
+        /**
+         * Opening the publication exceeded the available device memory.
+         */
+        public class OutOfMemory(cause: Error? = null) :
+            OpenError("There is not enough memory available to open the publication.", cause)
 
-        public class OutOfMemory(override val cause: Error? = null) : OpeningException() {
-
-            override val message: String =
-                "There is not enough memory available to open device to read the publication."
-        }
-
-        public class Unexpected(override val cause: Error? = null) : OpeningException() {
+        /**
+         * An unexpected error occurred.
+         */
+        public class Unknown(cause: Error? = null) :
+            OpenError("An unexpected error occurred.", cause) {
 
             public constructor(exception: Exception) : this(ThrowableError(exception))
-
-            override val message: String =
-                "An expected error occurred."
         }
     }
 
@@ -600,10 +629,11 @@ public class Publication(
         ReplaceWith("linkWithHref(href)"),
         level = DeprecationLevel.ERROR
     )
-    public fun resource(href: String): Link? = linkWithHref(href)
+    @Suppress("UNUSED_PARAMETER")
+    public fun resource(href: String): Link? = throw NotImplementedError()
 
     @Deprecated("Refactored as a property", ReplaceWith("baseUrl"), level = DeprecationLevel.ERROR)
-    public fun baseUrl(): URL? = baseUrl
+    public fun baseUrl(): URL? = throw NotImplementedError()
 
     @Deprecated(
         "Renamed [subcollections]",
@@ -627,7 +657,8 @@ public class Publication(
         ReplaceWith("linkWithHref(href)"),
         level = DeprecationLevel.ERROR
     )
-    public fun resourceWithHref(href: String): Link? = linkWithHref(href)
+    @Suppress("UNUSED_PARAMETER")
+    public fun resourceWithHref(href: String): Link? = throw NotImplementedError()
 
     @Deprecated(
         "Use a [ServiceFactory] for a [PositionsService] instead.",
@@ -646,11 +677,11 @@ public class Publication(
     public fun link(predicate: (Link) -> Boolean): Link? = null
 
     @Deprecated(
-        "Use [jsonManifest] instead",
-        ReplaceWith("jsonManifest"),
+        "Jsonify the manifest by yourself",
+        ReplaceWith("manifest.toJSON()"),
         level = DeprecationLevel.ERROR
     )
-    public fun toJSON(): JSONObject = JSONObject(jsonManifest)
+    public fun toJSON(): JSONObject = throw NotImplementedError()
 
     @Deprecated(
         "Use `metadata.effectiveReadingProgression` instead",
@@ -666,6 +697,13 @@ public class Publication(
     )
     @Suppress("UNUSED_PARAMETER")
     public fun contentLayoutForLanguage(language: String?): ReadingProgression = metadata.effectiveReadingProgression
+
+    @Deprecated(
+        "Renamed to `OpenError`",
+        replaceWith = ReplaceWith("Publication.OpenError"),
+        level = DeprecationLevel.ERROR
+    )
+    public sealed class OpeningException
 }
 
 private fun Resource.withMediaType(mediaType: MediaType?): Resource {

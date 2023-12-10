@@ -8,17 +8,15 @@
 
 package org.readium.r2.testapp.reader
 
-import org.readium.adapters.pdfium.navigator.PdfiumPreferences
-import org.readium.adapters.pdfium.navigator.PdfiumPreferencesEditor
-import org.readium.adapters.pdfium.navigator.PdfiumSettings
+import org.readium.adapter.exoplayer.audio.ExoPlayerNavigator
+import org.readium.adapter.exoplayer.audio.ExoPlayerNavigatorFactory
+import org.readium.adapter.exoplayer.audio.ExoPlayerPreferences
+import org.readium.adapter.pdfium.navigator.PdfiumNavigatorFactory
+import org.readium.adapter.pdfium.navigator.PdfiumPreferences
+import org.readium.navigator.media.tts.AndroidTtsNavigatorFactory
+import org.readium.navigator.media.tts.android.AndroidTtsPreferences
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubPreferences
-import org.readium.r2.navigator.media3.exoplayer.ExoPlayerNavigator
-import org.readium.r2.navigator.media3.exoplayer.ExoPlayerNavigatorFactory
-import org.readium.r2.navigator.media3.exoplayer.ExoPlayerPreferences
-import org.readium.r2.navigator.media3.tts.AndroidTtsNavigatorFactory
-import org.readium.r2.navigator.media3.tts.android.AndroidTtsPreferences
-import org.readium.r2.navigator.pdf.PdfNavigatorFactory
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.*
 import org.readium.r2.testapp.reader.preferences.PreferencesManager
@@ -56,7 +54,7 @@ class PdfReaderInitData(
     publication: Publication,
     initialLocation: Locator?,
     val preferencesManager: PreferencesManager<PdfiumPreferences>,
-    val navigatorFactory: PdfNavigatorFactory<PdfiumSettings, PdfiumPreferences, PdfiumPreferencesEditor>,
+    val navigatorFactory: PdfiumNavigatorFactory,
     ttsInitData: TtsInitData?
 ) : VisualReaderInitData(bookId, publication, initialLocation, ttsInitData)
 

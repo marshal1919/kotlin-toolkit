@@ -6,7 +6,9 @@
 
 package org.readium.r2.testapp
 
-import android.content.*
+import android.content.Context
+import android.os.Build
+import android.os.StrictMode
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
@@ -15,9 +17,23 @@ import java.io.File
 import java.util.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.Dispatchers.IO
+import java.util.Properties
+import java.util.concurrent.Executors
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.async
 import org.readium.r2.testapp.BuildConfig.DEBUG
-import org.readium.r2.testapp.bookshelf.BookRepository
-import org.readium.r2.testapp.db.BookDatabase
+import org.readium.r2.testapp.data.BookRepository
+import org.readium.r2.testapp.data.DownloadRepository
+import org.readium.r2.testapp.data.db.AppDatabase
+import org.readium.r2.testapp.data.model.Download
+import org.readium.r2.testapp.domain.Bookshelf
+import org.readium.r2.testapp.domain.CoverStorage
+import org.readium.r2.testapp.domain.LcpPublicationRetriever
+import org.readium.r2.testapp.domain.LocalPublicationRetriever
+import org.readium.r2.testapp.domain.OpdsPublicationRetriever
+import org.readium.r2.testapp.domain.PublicationRetriever
 import org.readium.r2.testapp.reader.ReaderRepository
 import timber.log.Timber
 
@@ -32,6 +48,7 @@ open class Application : android.app.Application() {
         private set
 
     lateinit var wordBooks: List<WordBook>
+    lateinit var bookshelf: Bookshelf
         private set
 
     lateinit var readerRepository: Deferred<ReaderRepository>
@@ -44,31 +61,68 @@ open class Application : android.app.Application() {
         by preferencesDataStore(name = "navigator-preferences")
 
     override fun onCreate() {
+        if (DEBUG) {
+//            enableStrictMode()
+            Timber.plant(Timber.DebugTree())
+        }
+
         super.onCreate()
+
         DynamicColors.applyToActivitiesIfAvailable(this)
-        if (DEBUG) Timber.plant(Timber.DebugTree())
 
         readium = Readium(this)
 
         storageDir = computeStorageDir()
 
-        /*
-         * Initializing repositories
-         */
-        bookRepository =
-            BookDatabase.getDatabase(this).booksDao()
-                .let { dao ->
-                    BookRepository(
-                        applicationContext,
-                        dao,
-                        storageDir,
-                        readium.lcpService,
-                        readium.publicationFactory,
-                        readium.assetRetriever,
-                        readium.protectionRetriever,
-                        readium.formatRegistry
+        val database = AppDatabase.getDatabase(this)
+
+        bookRepository = BookRepository(database.booksDao())
+
+        bookshelf =
+            Bookshelf(
+                bookRepository,
+                CoverStorage(storageDir, httpClient = readium.httpClient),
+                readium.publicationFactory,
+                readium.assetRetriever,
+                readium.protectionRetriever,
+                createPublicationRetriever = { listener ->
+                    PublicationRetriever(
+                        listener = listener,
+                        createLocalPublicationRetriever = { localListener ->
+                            LocalPublicationRetriever(
+                                listener = localListener,
+                                context = applicationContext,
+                                storageDir = storageDir,
+                                assetRetriever = readium.assetRetriever,
+                                formatRegistry = readium.formatRegistry,
+                                createLcpPublicationRetriever = { lcpListener ->
+                                    readium.lcpService.getOrNull()?.publicationRetriever()
+                                        ?.let { retriever ->
+                                            LcpPublicationRetriever(
+                                                listener = lcpListener,
+                                                downloadRepository = DownloadRepository(
+                                                    Download.Type.LCP,
+                                                    database.downloadsDao()
+                                                ),
+                                                lcpPublicationRetriever = retriever
+                                            )
+                                        }
+                                }
+                            )
+                        },
+                        createOpdsPublicationRetriever = { opdsListener ->
+                            OpdsPublicationRetriever(
+                                listener = opdsListener,
+                                downloadManager = readium.downloadManager,
+                                downloadRepository = DownloadRepository(
+                                    Download.Type.OPDS,
+                                    database.downloadsDao()
+                                )
+                            )
+                        }
                     )
                 }
+            )
 
         readerRepository =
             coroutineScope.async {
@@ -100,6 +154,36 @@ open class Application : android.app.Application() {
             } else {
                 filesDir?.path + "/"
             }
+        )
+    }
+
+    /**
+     * Strict mode will log violation of VM and threading policy.
+     * Use it to make sure the app doesn't do too much work on the main thread.
+     */
+    private fun enableStrictMode() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            return
+        }
+
+        val executor = Executors.newSingleThreadExecutor()
+        StrictMode.setThreadPolicy(
+            StrictMode.ThreadPolicy.Builder()
+                .detectAll()
+                .penaltyListener(executor) { violation ->
+                    Timber.e(violation, "Thread policy violation")
+                }
+//                .penaltyDeath()
+                .build()
+        )
+        StrictMode.setVmPolicy(
+            StrictMode.VmPolicy.Builder()
+                .detectAll()
+                .penaltyListener(executor) { violation ->
+                    Timber.e(violation, "VM policy violation")
+                }
+//                .penaltyDeath()
+                .build()
         )
     }
 }

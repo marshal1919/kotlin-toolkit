@@ -17,12 +17,12 @@ import org.readium.r2.shared.extensions.toPng
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.ServiceFactory
-import org.readium.r2.shared.resource.BytesResource
-import org.readium.r2.shared.resource.FailureResource
-import org.readium.r2.shared.resource.LazyResource
-import org.readium.r2.shared.resource.Resource
 import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.mediatype.MediaType
+import org.readium.r2.shared.util.resource.BytesResource
+import org.readium.r2.shared.util.resource.FailureResource
+import org.readium.r2.shared.util.resource.LazyResource
+import org.readium.r2.shared.util.resource.Resource
 
 /**
  * Provides an easy access to a bitmap version of the publication cover.
@@ -91,7 +91,7 @@ public var Publication.ServicesBuilder.coverServiceFactory: ServiceFactory?
 public abstract class GeneratedCoverService : CoverService {
 
     private val coverLink = Link(
-        href = "/~readium/cover",
+        href = Url("/~readium/cover")!!,
         mediaType = MediaType.PNG,
         rels = setOf("cover")
     )
@@ -100,12 +100,12 @@ public abstract class GeneratedCoverService : CoverService {
 
     abstract override suspend fun cover(): Bitmap
 
-    override fun get(link: Link): Resource? {
-        if (link.href != coverLink.href) {
+    override fun get(href: Url): Resource? {
+        if (href != coverLink.url()) {
             return null
         }
 
-        return LazyResource(source = Url(link.href)) {
+        return LazyResource {
             val cover = cover()
             val png = cover.toPng()
 
@@ -113,7 +113,7 @@ public abstract class GeneratedCoverService : CoverService {
                 val error = Exception("Unable to convert cover to PNG.")
                 FailureResource(error)
             } else {
-                BytesResource(png, url = Url(coverLink.href), mediaType = MediaType.PNG)
+                BytesResource(png, mediaType = MediaType.PNG)
             }
         }
     }

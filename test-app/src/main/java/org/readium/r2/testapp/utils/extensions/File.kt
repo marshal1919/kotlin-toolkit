@@ -12,13 +12,12 @@ package org.readium.r2.testapp.utils.extensions
 import java.io.File
 import java.io.FileFilter
 import java.io.FileOutputStream
-import java.io.IOException
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
-import org.readium.r2.shared.asset.AssetRetriever
 import org.readium.r2.shared.util.Try
+import org.readium.r2.shared.util.asset.AssetRetriever
 import org.readium.r2.shared.util.flatMap
 import org.readium.r2.shared.util.http.HttpClient
 import org.readium.r2.shared.util.http.HttpException
@@ -30,9 +29,13 @@ import org.readium.r2.testapp.BuildConfig
 import timber.log.Timber
 
 suspend fun File.moveTo(target: File) = withContext(Dispatchers.IO) {
-    if (!this@moveTo.renameTo(target)) {
-        throw IOException()
+    if (this@moveTo.renameTo(target)) {
+        return@withContext
     }
+
+    // renameTo might be unable to move a file from a filesystem to another. Copy instead.
+    copyTo(target)
+    delete()
 }
 
 /**

@@ -9,11 +9,14 @@ package org.readium.r2.shared.util.http
 import android.os.Bundle
 import java.io.ByteArrayInputStream
 import java.io.FileInputStream
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.time.Duration
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.readium.r2.shared.extensions.joinValues
+import org.readium.r2.shared.extensions.lowerCaseKeys
 import org.readium.r2.shared.util.Try
 import org.readium.r2.shared.util.flatMap
 import org.readium.r2.shared.util.http.HttpRequest.Method
@@ -29,7 +32,6 @@ import timber.log.Timber
  *
  * @param mediaTypeRetriever Component used to sniff the media type of the HTTP response.
  * @param userAgent Custom user agent to use for requests.
- * @param additionalHeaders A dictionary of additional headers to send with requests.
  * @param connectTimeout Timeout used when establishing a connection to the resource. A null timeout
  *        is interpreted as the default value, while a timeout of zero as an infinite timeout.
  * @param readTimeout Timeout used when reading the input stream. A null timeout is interpreted
@@ -38,11 +40,31 @@ import timber.log.Timber
 public class DefaultHttpClient(
     private val mediaTypeRetriever: MediaTypeRetriever,
     private val userAgent: String? = null,
-    private val additionalHeaders: Map<String, String> = mapOf(),
     private val connectTimeout: Duration? = null,
     private val readTimeout: Duration? = null,
     public var callback: Callback = object : Callback {}
 ) : HttpClient {
+
+    @Suppress("UNUSED_PARAMETER")
+    @Deprecated(
+        "You need to provide a [mediaTypeRetriever]. If you used [additionalHeaders], pass all headers when building your request or modify it in Callback.onStartRequest instead.",
+        level = DeprecationLevel.ERROR,
+        replaceWith = ReplaceWith("DefaultHttpClient(mediaTypeRetriever = MediaTypeRetriever())")
+    )
+    public constructor(
+        userAgent: String? = null,
+        additionalHeaders: Map<String, String> = mapOf(),
+        connectTimeout: Duration? = null,
+        readTimeout: Duration? = null,
+        callback: Callback = object : Callback {}
+    ) : this(
+        mediaTypeRetriever = MediaTypeRetriever(),
+        userAgent = userAgent,
+        connectTimeout = connectTimeout,
+        readTimeout = readTimeout,
+        callback = callback
+    )
+
     public companion object {
         /**
          * [HttpRequest.extras] key for the number of redirections performed for a request.
@@ -168,7 +190,7 @@ public class DefaultHttpClient(
                         Try.success(
                             HttpStreamResponse(
                                 response = response,
-                                body = connection.inputStream
+                                body = HttpURLConnectionInputStream(connection)
                             )
                         )
                     }
@@ -211,7 +233,7 @@ public class DefaultHttpClient(
             return Try.failure(HttpException.CANCELLED)
         }
 
-        val location = response.valueForHeader("Location")
+        val location = response.header("Location")
             ?: return Try.failure(HttpException(kind = HttpException.Kind.MalformedResponse))
 
         val newRequest = HttpRequest(
@@ -219,7 +241,8 @@ public class DefaultHttpClient(
             body = request.body,
             method = request.method,
             headers = buildMap {
-                response.valueForHeader("Set-Cookie")
+                response.headers("Set-Cookie")
+                    .takeUnless { it.isEmpty() }
                     ?.let { put("Cookie", it) }
             },
             extras = Bundle().apply {
@@ -252,10 +275,11 @@ public class DefaultHttpClient(
             connection.setRequestProperty("User-Agent", userAgent)
         }
 
-        for ((k, v) in this@DefaultHttpClient.additionalHeaders) {
-            connection.setRequestProperty(k, v)
-        }
-        for ((k, v) in headers) {
+        val normalizedHeaders = headers
+            .lowerCaseKeys()
+            .joinValues(",")
+
+        for ((k, v) in normalizedHeaders) {
             connection.setRequestProperty(k, v)
         }
 
@@ -283,4 +307,43 @@ public class DefaultHttpClient(
             @Suppress("SENSELESS_COMPARISON")
             key == null || value == null
         }
+}
+
+/**
+ * [HttpURLConnection]'s input stream which disconnects when closed.
+ */
+private class HttpURLConnectionInputStream(
+    private val connection: HttpURLConnection
+) : InputStream() {
+
+    private val inputStream = connection.inputStream
+
+    override fun close() {
+        super.close()
+        connection.disconnect()
+    }
+
+    override fun read(): Int =
+        inputStream.read()
+
+    override fun read(b: ByteArray): Int =
+        inputStream.read(b)
+
+    override fun read(b: ByteArray, off: Int, len: Int): Int =
+        inputStream.read(b, off, len)
+
+    override fun skip(n: Long): Long =
+        inputStream.skip(n)
+
+    override fun available(): Int =
+        inputStream.available()
+
+    override fun mark(readlimit: Int) =
+        inputStream.mark(readlimit)
+
+    override fun reset() =
+        inputStream.reset()
+
+    override fun markSupported(): Boolean =
+        inputStream.markSupported()
 }

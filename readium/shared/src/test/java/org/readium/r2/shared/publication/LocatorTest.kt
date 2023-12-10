@@ -14,7 +14,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.readium.r2.shared.DelicateReadiumApi
 import org.readium.r2.shared.assertJSONEquals
+import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.mediatype.MediaType
 import org.robolectric.RobolectricTestRunner
 
@@ -23,7 +25,7 @@ class LocatorTest {
 
     @Test fun `parse {Locator} minimal JSON`() {
         assertEquals(
-            Locator(href = "http://locator", type = "text/html"),
+            Locator(href = Url("http://locator")!!, mediaType = MediaType.HTML),
             Locator.fromJSON(
                 JSONObject(
                     """{
@@ -38,8 +40,8 @@ class LocatorTest {
     @Test fun `parse {Locator} full JSON`() {
         assertEquals(
             Locator(
-                href = "http://locator",
-                type = "text/html",
+                href = Url("http://locator")!!,
+                mediaType = MediaType.HTML,
                 title = "My Locator",
                 locations = Locator.Locations(position = 42),
                 text = Locator.Text(highlight = "Excerpt")
@@ -70,6 +72,26 @@ class LocatorTest {
         assertNull(Locator.fromJSON(JSONObject("{ 'invalid': 'object' }")))
     }
 
+    @OptIn(DelicateReadiumApi::class)
+    @Test
+    fun `parse {Locator} with legacy HREF`() {
+        val json = JSONObject(
+            """
+            {
+                "href": "legacy href",
+                "type": "text/html"
+            }
+        """
+        )
+
+        assertNull(Locator.fromJSON(json))
+
+        assertEquals(
+            Locator(href = Url("legacy%20href")!!, mediaType = MediaType.HTML),
+            Locator.fromLegacyJSON(json)
+        )
+    }
+
     @Test fun `get {Locator} minimal JSON`() {
         assertJSONEquals(
             JSONObject(
@@ -78,7 +100,7 @@ class LocatorTest {
                 "type": "text/html"
             }"""
             ),
-            Locator(href = "http://locator", type = "text/html").toJSON()
+            Locator(href = Url("http://locator")!!, mediaType = MediaType.HTML).toJSON()
         )
     }
 
@@ -98,8 +120,8 @@ class LocatorTest {
             }"""
             ),
             Locator(
-                href = "http://locator",
-                type = "text/html",
+                href = Url("http://locator")!!,
+                mediaType = MediaType.HTML,
                 title = "My Locator",
                 locations = Locator.Locations(position = 42),
                 text = Locator.Text(highlight = "Excerpt")
@@ -110,8 +132,8 @@ class LocatorTest {
     @Test fun `copy a {Locator} with different {Locations} sub-properties`() {
         assertEquals(
             Locator(
-                href = "http://locator",
-                type = "text/html",
+                href = Url("http://locator")!!,
+                mediaType = MediaType.HTML,
                 locations = Locator.Locations(
                     fragments = listOf("p=4", "frag34"),
                     progression = 0.74,
@@ -121,8 +143,8 @@ class LocatorTest {
                 )
             ),
             Locator(
-                href = "http://locator",
-                type = "text/html",
+                href = Url("http://locator")!!,
+                mediaType = MediaType.HTML,
                 locations = Locator.Locations(position = 42, progression = 2.0)
             ).copyWithLocations(
                 fragments = listOf("p=4", "frag34"),
@@ -136,13 +158,13 @@ class LocatorTest {
     @Test fun `copy a {Locator} with reset {Locations} sub-properties`() {
         assertEquals(
             Locator(
-                href = "http://locator",
-                type = "text/html",
+                href = Url("http://locator")!!,
+                mediaType = MediaType.HTML,
                 locations = Locator.Locations()
             ),
             Locator(
-                href = "http://locator",
-                type = "text/html",
+                href = Url("http://locator")!!,
+                mediaType = MediaType.HTML,
                 locations = Locator.Locations(position = 42, progression = 2.0)
             ).copyWithLocations(
                 fragments = emptyList(),
@@ -337,6 +359,131 @@ class LocatorTest {
             ).toJSON()
         )
     }
+
+    @Test fun `substring from a range`() {
+        val text = Locator.Text(
+            before = "before",
+            highlight = "highlight",
+            after = "after"
+        )
+
+        assertEquals(
+            Locator.Text(
+                before = "before",
+                highlight = "h",
+                after = "ighlightafter"
+            ),
+            text.substring(0..-1)
+        )
+
+        assertEquals(
+            Locator.Text(
+                before = "before",
+                highlight = "h",
+                after = "ighlightafter"
+            ),
+            text.substring(0..0)
+        )
+
+        assertEquals(
+            Locator.Text(
+                before = "beforehigh",
+                highlight = "lig",
+                after = "htafter"
+            ),
+            text.substring(4..6)
+        )
+
+        assertEquals(
+            Locator.Text(
+                before = "before",
+                highlight = "highlight",
+                after = "after"
+            ),
+            text.substring(0..8)
+        )
+
+        assertEquals(
+            Locator.Text(
+                before = "beforehighli",
+                highlight = "ght",
+                after = "after"
+            ),
+            text.substring(6..12)
+        )
+
+        assertEquals(
+            Locator.Text(
+                before = "beforehighligh",
+                highlight = "t",
+                after = "after"
+            ),
+            text.substring(8..12)
+        )
+
+        assertEquals(
+            Locator.Text(
+                before = "beforehighlight",
+                highlight = "",
+                after = "after"
+            ),
+            text.substring(9..12)
+        )
+    }
+
+    @Test fun `substring from a range with null components`() {
+        assertEquals(
+            Locator.Text(
+                before = "high",
+                highlight = "lig",
+                after = "htafter"
+            ),
+            Locator.Text(
+                before = null,
+                highlight = "highlight",
+                after = "after"
+            ).substring(4..6)
+        )
+
+        assertEquals(
+            Locator.Text(
+                before = "beforehigh",
+                highlight = "lig",
+                after = "ht"
+            ),
+            Locator.Text(
+                before = "before",
+                highlight = "highlight",
+                after = null
+            ).substring(4..6)
+        )
+
+        assertEquals(
+            Locator.Text(
+                before = "before",
+                highlight = null,
+                after = "after"
+            ),
+            Locator.Text(
+                before = "before",
+                highlight = null,
+                after = "after"
+            ).substring(4..6)
+        )
+
+        assertEquals(
+            Locator.Text(
+                before = "before",
+                highlight = "",
+                after = "after"
+            ),
+            Locator.Text(
+                before = "before",
+                highlight = "",
+                after = "after"
+            ).substring(4..6)
+        )
+    }
 }
 
 @RunWith(RobolectricTestRunner::class)
@@ -367,19 +514,19 @@ class LocatorCollectionTest {
                 links = listOf(
                     Link(
                         rels = setOf("self"),
-                        href = "/978-1503222687/search?query=apple",
+                        href = Href("/978-1503222687/search?query=apple")!!,
                         mediaType = MediaType("application/vnd.readium.locators+json")!!
                     ),
                     Link(
                         rels = setOf("next"),
-                        href = "/978-1503222687/search?query=apple&page=2",
+                        href = Href("/978-1503222687/search?query=apple&page=2")!!,
                         mediaType = MediaType("application/vnd.readium.locators+json")!!
                     )
                 ),
                 locators = listOf(
                     Locator(
-                        href = "/978-1503222687/chap7.html",
-                        type = "application/xhtml+xml",
+                        href = Url("/978-1503222687/chap7.html")!!,
+                        mediaType = MediaType.XHTML,
                         locations = Locator.Locations(
                             fragments = listOf(":~:text=riddle,-yet%3F'"),
                             progression = 0.43
@@ -391,8 +538,8 @@ class LocatorCollectionTest {
                         )
                     ),
                     Locator(
-                        href = "/978-1503222687/chap7.html",
-                        type = "application/xhtml+xml",
+                        href = Url("/978-1503222687/chap7.html")!!,
+                        mediaType = MediaType.XHTML,
                         locations = Locator.Locations(
                             fragments = listOf(":~:text=in%20asking-,riddles"),
                             progression = 0.47
@@ -535,19 +682,19 @@ class LocatorCollectionTest {
                 links = listOf(
                     Link(
                         rels = setOf("self"),
-                        href = "/978-1503222687/search?query=apple",
+                        href = Href("/978-1503222687/search?query=apple")!!,
                         mediaType = MediaType("application/vnd.readium.locators+json")!!
                     ),
                     Link(
                         rels = setOf("next"),
-                        href = "/978-1503222687/search?query=apple&page=2",
+                        href = Href("/978-1503222687/search?query=apple&page=2")!!,
                         mediaType = MediaType("application/vnd.readium.locators+json")!!
                     )
                 ),
                 locators = listOf(
                     Locator(
-                        href = "/978-1503222687/chap7.html",
-                        type = "application/xhtml+xml",
+                        href = Url("/978-1503222687/chap7.html")!!,
+                        mediaType = MediaType.XHTML,
                         locations = Locator.Locations(
                             fragments = listOf(":~:text=riddle,-yet%3F'"),
                             progression = 0.43
@@ -559,8 +706,8 @@ class LocatorCollectionTest {
                         )
                     ),
                     Locator(
-                        href = "/978-1503222687/chap7.html",
-                        type = "application/xhtml+xml",
+                        href = Url("/978-1503222687/chap7.html")!!,
+                        mediaType = MediaType.XHTML,
                         locations = Locator.Locations(
                             fragments = listOf(":~:text=in%20asking-,riddles"),
                             progression = 0.47

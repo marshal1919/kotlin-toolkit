@@ -28,8 +28,8 @@ import org.readium.r2.testapp.MainActivity
 import org.readium.r2.testapp.R
 import org.readium.r2.testapp.bookshelf.BookshelfFragment
 import org.readium.r2.testapp.catalogs.CatalogFeedListAdapter.Companion.CATALOGFEED
+import org.readium.r2.testapp.data.model.Catalog
 import org.readium.r2.testapp.databinding.FragmentCatalogBinding
-import org.readium.r2.testapp.domain.model.Catalog
 import org.readium.r2.testapp.opds.GridAutoFitLayoutManager
 import org.readium.r2.testapp.utils.viewLifecycle
 
@@ -41,7 +41,7 @@ class CatalogFragment : Fragment() {
     private lateinit var navigationAdapter: NavigationAdapter
     private lateinit var catalog: Catalog
     private var showFacetMenu = false
-    private lateinit var facets: MutableList<Facet>
+    private lateinit var facets: List<Facet>
     private var binding: FragmentCatalogBinding by viewLifecycle()
 
     override fun onCreateView(
@@ -49,7 +49,7 @@ class CatalogFragment : Fragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        catalogViewModel.eventChannel.receive(this) { handleEvent(it) }
+        catalogViewModel.channel.receive(this) { handleEvent(it) }
 
         catalog = arguments?.let { BundleCompat.getParcelable(it, CATALOGFEED, Catalog::class.java) }!!
         binding = FragmentCatalogBinding.inflate(inflater, container, false)
@@ -107,7 +107,7 @@ class CatalogFragment : Fragment() {
                                     item.setOnMenuItemClickListener {
                                         val catalog1 = Catalog(
                                             title = link.title!!,
-                                            href = link.href,
+                                            href = link.href.toString(),
                                             type = catalog.type
                                         )
                                         val bundle = bundleOf(CATALOGFEED to catalog1)
@@ -130,9 +130,9 @@ class CatalogFragment : Fragment() {
         )
     }
 
-    private fun handleEvent(event: CatalogViewModel.Event.FeedEvent) {
+    private fun handleEvent(event: CatalogViewModel.Event) {
         when (event) {
-            is CatalogViewModel.Event.FeedEvent.CatalogParseFailed -> {
+            is CatalogViewModel.Event.CatalogParseFailed -> {
                 Snackbar.make(
                     requireView(),
                     getString(R.string.failed_parsing_catalog),
@@ -140,8 +140,8 @@ class CatalogFragment : Fragment() {
                 ).show()
             }
 
-            is CatalogViewModel.Event.FeedEvent.CatalogParseSuccess -> {
-                facets = event.result.feed?.facets ?: mutableListOf()
+            is CatalogViewModel.Event.CatalogParseSuccess -> {
+                facets = event.result.feed?.facets ?: emptyList()
 
                 if (facets.size > 0) {
                     showFacetMenu = true

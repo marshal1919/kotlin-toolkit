@@ -47,18 +47,18 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.parcelize.Parcelize
+import org.readium.navigator.media.tts.android.AndroidTtsEngine
 import org.readium.r2.navigator.*
 import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.TapEvent
-import org.readium.r2.navigator.media3.tts.android.AndroidTtsEngine
 import org.readium.r2.navigator.util.BaseActionModeCallback
 //import org.readium.r2.navigator.util.DirectionalNavigationAdapter
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.util.Language
 import org.readium.r2.testapp.R
+import org.readium.r2.testapp.data.model.Highlight
 import org.readium.r2.testapp.databinding.FragmentReaderBinding
-import org.readium.r2.testapp.domain.model.Highlight
 import org.readium.r2.testapp.reader.preferences.UserPreferencesBottomSheetDialogFragment
 import org.readium.r2.testapp.reader.tts.TtsControls
 import org.readium.r2.testapp.reader.tts.TtsViewModel
@@ -73,7 +73,7 @@ import org.readium.r2.testapp.DictData
  * Provides common menu items and saves last location on stop.
  */
 @OptIn(ExperimentalDecorator::class, ExperimentalReadiumApi::class)
-abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.Listener {
+abstract class VisualReaderFragment : BaseReaderFragment() {
 
     protected var binding: FragmentReaderBinding by viewLifecycle()
 
@@ -104,10 +104,11 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
 
         navigatorFragment = navigator as Fragment
 
-        (navigator as VisualNavigator).apply {
+        (navigator as OverflowNavigator).apply {
             // This will automatically turn pages when tapping the screen edges or arrow keys.
             //addInputListener(DirectionalNavigationAdapter())
 
+        (navigator as VisualNavigator).apply {
             addInputListener(object : InputListener {
                 override fun onTap(navigator: VisualNavigator, event: TapEvent): Boolean {
                     //隐藏上一次的弹窗

@@ -18,8 +18,8 @@ import androidx.recyclerview.widget.RecyclerView
 import org.readium.r2.shared.opds.Group
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.testapp.R
+import org.readium.r2.testapp.data.model.Catalog
 import org.readium.r2.testapp.databinding.ItemGroupViewBinding
-import org.readium.r2.testapp.domain.model.Catalog
 
 class GroupAdapter(
     val type: Int,
@@ -55,7 +55,7 @@ class GroupAdapter(
                 binding.groupViewGroupPublications.itemRecycleMoreButton.visibility = View.VISIBLE
                 binding.groupViewGroupPublications.itemRecycleMoreButton.setOnClickListener {
                     val catalog1 = Catalog(
-                        href = group.links.first().href,
+                        href = group.links.first().href.toString(),
                         title = group.title,
                         type = type
                     )

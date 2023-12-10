@@ -6,35 +6,34 @@
 
 package org.readium.r2.testapp.reader
 
-import android.app.Activity
 import android.app.Application
 import androidx.annotation.StringRes
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences as JetpackPreferences
 import org.json.JSONObject
-import org.readium.adapters.pdfium.navigator.PdfiumEngineProvider
+import org.readium.adapter.exoplayer.audio.ExoPlayerEngineProvider
+import org.readium.adapter.pdfium.navigator.PdfiumEngineProvider
+import org.readium.navigator.media.audio.AudioNavigatorFactory
+import org.readium.navigator.media.tts.TtsNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
-import org.readium.r2.navigator.media3.audio.AudioNavigatorFactory
-import org.readium.r2.navigator.media3.exoplayer.ExoPlayerEngineProvider
-import org.readium.r2.navigator.media3.tts.TtsNavigatorFactory
 import org.readium.r2.navigator.pdf.PdfNavigatorFactory
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.UserException
-import org.readium.r2.shared.asset.AssetRetriever
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.allAreHtml
 import org.readium.r2.shared.publication.services.isRestricted
 import org.readium.r2.shared.util.Try
-import org.readium.r2.shared.util.Url
+import org.readium.r2.shared.util.asset.AssetRetriever
 import org.readium.r2.shared.util.getOrElse
-import org.readium.r2.testapp.PublicationError
 import org.readium.r2.testapp.Readium
-import org.readium.r2.testapp.bookshelf.BookRepository
+import org.readium.r2.testapp.data.BookRepository
+import org.readium.r2.testapp.domain.PublicationError
 import org.readium.r2.testapp.reader.preferences.AndroidTtsPreferencesManagerFactory
 import org.readium.r2.testapp.reader.preferences.EpubPreferencesManagerFactory
 import org.readium.r2.testapp.reader.preferences.ExoPlayerPreferencesManagerFactory
 import org.readium.r2.testapp.reader.preferences.PdfiumPreferencesManagerFactory
+import org.readium.r2.testapp.utils.CoroutineQueue
 import timber.log.Timber
 
 /**
@@ -70,14 +69,25 @@ class ReaderRepository(
 
                 operator fun invoke(
                     error: AssetRetriever.Error
-                ): OpeningError = PublicationError(org.readium.r2.testapp.PublicationError(error))
+                ): OpeningError = PublicationError(
+                    org.readium.r2.testapp.domain.PublicationError(
+                        error
+                    )
+                )
 
                 operator fun invoke(
-                    error: Publication.OpeningException
-                ): OpeningError = PublicationError(org.readium.r2.testapp.PublicationError(error))
+                    error: Publication.OpenError
+                ): OpeningError = PublicationError(
+                    org.readium.r2.testapp.domain.PublicationError(
+                        error
+                    )
+                )
             }
         }
     }
+
+    private val coroutineQueue: CoroutineQueue =
+        CoroutineQueue()
 
     private val repository: MutableMap<Long, ReaderInitData> =
         mutableMapOf()
@@ -88,7 +98,10 @@ class ReaderRepository(
     operator fun get(bookId: Long): ReaderInitData? =
         repository[bookId]
 
-    suspend fun open(bookId: Long, activity: Activity): Try<Unit, OpeningError> {
+    suspend fun open(bookId: Long): Try<Unit, OpeningError> =
+        coroutineQueue.await { doOpen(bookId) }
+
+    private suspend fun doOpen(bookId: Long): Try<Unit, OpeningError> {
         if (bookId in repository.keys) {
             return Try.success(Unit)
         }
@@ -96,7 +109,7 @@ class ReaderRepository(
         val book = checkNotNull(bookRepository.get(bookId)) { "Cannot find book in database." }
 
         val asset = readium.assetRetriever.retrieve(
-            Url(book.href)!!,
+            book.url,
             book.mediaType,
             book.assetType
         ).getOrElse { return Try.failure(OpeningError.PublicationError(it)) }
@@ -104,8 +117,7 @@ class ReaderRepository(
         val publication = readium.publicationFactory.open(
             asset,
             contentProtectionScheme = book.drmScheme,
-            allowUserInteraction = true,
-            sender = activity
+            allowUserInteraction = true
         ).getOrElse { return Try.failure(OpeningError.PublicationError(it)) }
 
         // The publication is protected with a DRM and not unlocked.
@@ -127,7 +139,7 @@ class ReaderRepository(
                 openImage(bookId, publication, initialLocator)
             else ->
                 Try.failure(
-                    OpeningError.PublicationError(PublicationError.UnsupportedPublication())
+                    OpeningError.PublicationError(PublicationError.UnsupportedAsset())
                 )
         }
 
@@ -147,14 +159,14 @@ class ReaderRepository(
             publication,
             ExoPlayerEngineProvider(application)
         ) ?: return Try.failure(
-            OpeningError.PublicationError(PublicationError.UnsupportedPublication())
+            OpeningError.PublicationError(PublicationError.UnsupportedAsset())
         )
 
         val navigator = navigatorFactory.createNavigator(
             initialLocator,
             initialPreferences
         ) ?: return Try.failure(
-            OpeningError.PublicationError(PublicationError.UnsupportedPublication())
+            OpeningError.PublicationError(PublicationError.UnsupportedAsset())
         )
 
         mediaServiceFacade.openSession(bookId, navigator)
@@ -238,19 +250,21 @@ class ReaderRepository(
         return TtsInitData(mediaServiceFacade, navigatorFactory, preferencesManager)
     }
 
-    suspend fun close(bookId: Long) {
-        Timber.v("Closing Publication $bookId.")
-        when (val initData = repository.remove(bookId)) {
-            is MediaReaderInitData -> {
-                mediaServiceFacade.closeSession()
-                initData.publication.close()
-            }
-            is VisualReaderInitData -> {
-                mediaServiceFacade.closeSession()
-                initData.publication.close()
-            }
-            null, is DummyReaderInitData -> {
-                // Do nothing
+    fun close(bookId: Long) {
+        coroutineQueue.launch {
+            Timber.v("Closing Publication $bookId.")
+            when (val initData = repository.remove(bookId)) {
+                is MediaReaderInitData -> {
+                    mediaServiceFacade.closeSession()
+                    initData.publication.close()
+                }
+                is VisualReaderInitData -> {
+                    mediaServiceFacade.closeSession()
+                    initData.publication.close()
+                }
+                null, is DummyReaderInitData -> {
+                    // Do nothing
+                }
             }
         }
     }

@@ -6,24 +6,26 @@
 
 package org.readium.r2.streamer.parser.epub
 
-import org.readium.r2.shared.parser.xml.ElementNode
-import org.readium.r2.shared.util.Href
+import org.readium.r2.shared.publication.Href
+import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.mediatype.MediaType
 import org.readium.r2.shared.util.mediatype.MediaTypeRetriever
+import org.readium.r2.shared.util.xml.ElementNode
+import org.readium.r2.streamer.parser.epub.extensions.fromEpubHref
 
 internal class MetadataParser(
     private val prefixMap: Map<String, String>,
     private val mediaTypeRetriever: MediaTypeRetriever
 ) {
 
-    fun parse(document: ElementNode, filePath: String): List<MetadataItem>? {
+    fun parse(document: ElementNode, filePath: Url): List<MetadataItem>? {
         val metadata = document.getFirst("metadata", Namespaces.OPF)
             ?: return null
         val items = parseElements(metadata, filePath)
         return resolveItemsHierarchy(items)
     }
 
-    private fun parseElements(metadataElement: ElementNode, filePath: String): List<MetadataItem> =
+    private fun parseElements(metadataElement: ElementNode, filePath: Url): List<MetadataItem> =
         metadataElement.getAll().mapNotNull { e ->
             when {
                 e.namespace == Namespaces.DC ->
@@ -36,8 +38,8 @@ internal class MetadataParser(
             }
         }
 
-    private fun parseLinkElement(element: ElementNode, filePath: String): MetadataItem.Link? {
-        val href = element.getAttr("href") ?: return null
+    private fun parseLinkElement(element: ElementNode, filePath: Url): MetadataItem.Link? {
+        val href = element.getAttr("href")?.let { Url.fromEpubHref(it) } ?: return null
         val relAttr = element.getAttr("rel").orEmpty()
         val rel = parseProperties(relAttr).map { resolveProperty(it, prefixMap, DEFAULT_VOCAB.LINK) }
         val propAttr = element.getAttr("properties").orEmpty()
@@ -53,7 +55,7 @@ internal class MetadataParser(
         return MetadataItem.Link(
             id = element.id,
             refines = refines,
-            href = Href(href, baseHref = filePath).string,
+            href = Href(filePath.resolve(href)),
             rels = rel.toSet(),
             mediaType = mediaTypeRetriever.retrieve(mediaType),
             properties = properties
@@ -191,11 +193,13 @@ internal sealed class MetadataItem {
         override val id: String?,
         override val refines: String?,
         override val children: List<MetadataItem> = emptyList(),
-        val href: String,
+        val href: Href,
         val rels: Set<String>,
         val mediaType: MediaType?,
         val properties: List<String> = emptyList()
-    ) : MetadataItem()
+    ) : MetadataItem() {
+        fun url(): Url = href.resolve()
+    }
 
     data class Meta(
         override val id: String?,

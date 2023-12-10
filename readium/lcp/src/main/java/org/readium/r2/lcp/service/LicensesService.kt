@@ -23,19 +23,24 @@ import org.readium.r2.lcp.LcpAuthenticating
 import org.readium.r2.lcp.LcpContentProtection
 import org.readium.r2.lcp.LcpException
 import org.readium.r2.lcp.LcpLicense
+import org.readium.r2.lcp.LcpPublicationRetriever
 import org.readium.r2.lcp.LcpService
 import org.readium.r2.lcp.license.License
 import org.readium.r2.lcp.license.LicenseValidation
 import org.readium.r2.lcp.license.container.LicenseContainer
+import org.readium.r2.lcp.license.container.WritableLicenseContainer
 import org.readium.r2.lcp.license.container.createLicenseContainer
 import org.readium.r2.lcp.license.model.LicenseDocument
-import org.readium.r2.shared.asset.Asset
-import org.readium.r2.shared.asset.AssetRetriever
 import org.readium.r2.shared.extensions.tryOr
+import org.readium.r2.shared.extensions.tryOrLog
 import org.readium.r2.shared.publication.protection.ContentProtection
 import org.readium.r2.shared.util.Try
+import org.readium.r2.shared.util.asset.Asset
+import org.readium.r2.shared.util.asset.AssetRetriever
+import org.readium.r2.shared.util.downloads.DownloadManager
 import org.readium.r2.shared.util.mediatype.FormatRegistry
 import org.readium.r2.shared.util.mediatype.MediaType
+import org.readium.r2.shared.util.mediatype.MediaTypeRetriever
 import timber.log.Timber
 
 internal class LicensesService(
@@ -45,7 +50,9 @@ internal class LicensesService(
     private val network: NetworkService,
     private val passphrases: PassphrasesService,
     private val context: Context,
-    private val assetRetriever: AssetRetriever
+    private val assetRetriever: AssetRetriever,
+    private val mediaTypeRetriever: MediaTypeRetriever,
+    private val downloadManager: DownloadManager
 ) : LcpService, CoroutineScope by MainScope() {
 
     override suspend fun isLcpProtected(file: File): Boolean {
@@ -59,7 +66,7 @@ internal class LicensesService(
                 is Asset.Resource ->
                     asset.mediaType == MediaType.LCP_LICENSE_DOCUMENT
                 is Asset.Container -> {
-                    createLicenseContainer(asset.container, asset.mediaType).read()
+                    createLicenseContainer(context, asset.container, asset.mediaType).read()
                     true
                 }
             }
@@ -70,6 +77,19 @@ internal class LicensesService(
     ): ContentProtection =
         LcpContentProtection(this, authentication, assetRetriever)
 
+    override fun publicationRetriever(): LcpPublicationRetriever {
+        return LcpPublicationRetriever(
+            context,
+            downloadManager,
+            mediaTypeRetriever
+        )
+    }
+
+    @Deprecated(
+        "Use a LcpPublicationRetriever instead.",
+        ReplaceWith("publicationRetriever()"),
+        level = DeprecationLevel.ERROR
+    )
     override suspend fun acquirePublication(lcpl: ByteArray, onProgress: (Double) -> Unit): Try<LcpService.AcquiredPublication, LcpException> =
         try {
             val licenseDocument = LicenseDocument(lcpl)
@@ -83,17 +103,14 @@ internal class LicensesService(
         file: File,
         mediaType: MediaType,
         authentication: LcpAuthenticating,
-        allowUserInteraction: Boolean,
-        sender: Any?
+        allowUserInteraction: Boolean
     ): Try<LcpLicense, LcpException> =
         try {
             val container = createLicenseContainer(file, mediaType)
             val license = retrieveLicense(
                 container,
                 authentication,
-                allowUserInteraction,
-                true,
-                sender
+                allowUserInteraction
             )
             Try.success(license)
         } catch (e: Exception) {
@@ -103,17 +120,14 @@ internal class LicensesService(
     override suspend fun retrieveLicense(
         asset: Asset,
         authentication: LcpAuthenticating,
-        allowUserInteraction: Boolean,
-        sender: Any?
+        allowUserInteraction: Boolean
     ): Try<LcpLicense, LcpException> =
         try {
-            val licenseContainer = createLicenseContainer(asset)
+            val licenseContainer = createLicenseContainer(context, asset)
             val license = retrieveLicense(
                 licenseContainer,
                 authentication,
-                allowUserInteraction,
-                false,
-                sender
+                allowUserInteraction
             )
             Try.success(license)
         } catch (e: Exception) {
@@ -123,9 +137,7 @@ internal class LicensesService(
     private suspend fun retrieveLicense(
         container: LicenseContainer,
         authentication: LcpAuthenticating,
-        allowUserInteraction: Boolean,
-        ignoreInternetErrors: Boolean,
-        sender: Any?
+        allowUserInteraction: Boolean
     ): LcpLicense {
         // WARNING: Using the Default dispatcher in the state machine code is critical. If we were using the Main Dispatcher,
         // calling runBlocking in LicenseValidation.handle would block the main thread and cause a severe issue
@@ -135,9 +147,7 @@ internal class LicensesService(
             retrieveLicenseUnsafe(
                 container,
                 authentication,
-                allowUserInteraction,
-                ignoreInternetErrors,
-                sender
+                allowUserInteraction
             )
         }
         Timber.d("license retrieved ${license.license}")
@@ -148,17 +158,13 @@ internal class LicensesService(
     private suspend fun retrieveLicenseUnsafe(
         container: LicenseContainer,
         authentication: LcpAuthenticating?,
-        allowUserInteraction: Boolean,
-        ignoreInternetErrors: Boolean,
-        sender: Any?
+        allowUserInteraction: Boolean
     ): License =
         suspendCancellableCoroutine { cont ->
             retrieveLicense(
                 container,
                 authentication,
-                allowUserInteraction,
-                ignoreInternetErrors,
-                sender
+                allowUserInteraction
             ) { license ->
                 if (cont.isActive) {
                     cont.resume(license)
@@ -170,18 +176,20 @@ internal class LicensesService(
         container: LicenseContainer,
         authentication: LcpAuthenticating?,
         allowUserInteraction: Boolean,
-        ignoreInternetErrors: Boolean,
-        sender: Any?,
         completion: (License) -> Unit
     ) {
         var initialData = container.read()
         Timber.d("license ${LicenseDocument(data = initialData).json}")
 
         val validation = LicenseValidation(
-            authentication = authentication, crl = this.crl,
-            device = this.device, network = this.network, passphrases = this.passphrases, context = this.context,
-            allowUserInteraction = allowUserInteraction, ignoreInternetErrors = ignoreInternetErrors,
-            sender = sender
+            authentication = authentication,
+            crl = this.crl,
+            device = this.device,
+            network = this.network,
+            passphrases = this.passphrases,
+            context = this.context,
+            allowUserInteraction = allowUserInteraction,
+            ignoreInternetErrors = container is WritableLicenseContainer
         ) { licenseDocument ->
             try {
                 launch {
@@ -190,9 +198,11 @@ internal class LicensesService(
             } catch (error: Error) {
                 Timber.d("Failed to add the LCP License to the local database: $error")
             }
-            if (!licenseDocument.data.contentEquals(initialData)) {
+            if (!licenseDocument.toByteArray().contentEquals(initialData)) {
                 try {
-                    container.write(licenseDocument)
+                    (container as? WritableLicenseContainer)
+                        ?.let { container.write(licenseDocument) }
+
                     Timber.d("licenseDocument ${licenseDocument.json}")
 
                     initialData = container.read()
@@ -209,15 +219,17 @@ internal class LicensesService(
                 Timber.d("validated documents $it")
                 try {
                     documents.getContext()
-                    completion(
-                        License(
-                            documents = it,
-                            validation = validation,
-                            licenses = this.licenses,
-                            device = this.device,
-                            network = this.network
+                    launch {
+                        completion(
+                            License(
+                                documents = it,
+                                validation = validation,
+                                licenses = this@LicensesService.licenses,
+                                device = this@LicensesService.device,
+                                network = this@LicensesService.network
+                            )
                         )
-                    )
+                    }
                 } catch (e: Exception) {
                     throw e
                 }
@@ -232,9 +244,7 @@ internal class LicensesService(
     }
 
     private suspend fun fetchPublication(license: LicenseDocument, onProgress: (Double) -> Unit): LcpService.AcquiredPublication {
-        val link = license.link(LicenseDocument.Rel.Publication)
-        val url = link?.url
-            ?: throw LcpException.Parsing.Url(rel = LicenseDocument.Rel.Publication.value)
+        val link = license.publicationLink
 
         val destination = withContext(Dispatchers.IO) {
             File.createTempFile("lcp-${System.currentTimeMillis()}", ".tmp")
@@ -242,15 +252,20 @@ internal class LicensesService(
         Timber.i("LCP destination $destination")
 
         val mediaType = network.download(
-            url,
+            link.url(),
             destination,
-            mediaType = link.type,
+            mediaType = link.mediaType,
             onProgress = onProgress
-        ) ?: link.mediaType
+        ) ?: link.mediaType ?: MediaType.EPUB
 
-        // Saves the License Document into the downloaded publication
-        val container = createLicenseContainer(destination, mediaType)
-        container.write(license)
+        try {
+            // Saves the License Document into the downloaded publication
+            val container = createLicenseContainer(destination, mediaType)
+            container.write(license)
+        } catch (e: Exception) {
+            tryOrLog { destination.delete() }
+            throw e
+        }
 
         return LcpService.AcquiredPublication(
             localFile = destination,

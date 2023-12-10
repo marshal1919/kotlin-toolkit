@@ -23,27 +23,26 @@ public interface Error {
 }
 
 /**
+ * A basic [Error] implementation with a message.
+ */
+public class MessageError(
+    override val message: String,
+    override val cause: Error? = null
+) : Error
+
+/**
  * An error caused by the catch of a throwable.
- *
- * @param throwable the cause Throwable
  */
 public class ThrowableError(
     public val throwable: Throwable
 ) : Error {
-
-    override val message: String =
-        throwable.message ?: "Exception"
-
-    override val cause: Error? =
-        null
+    override val message: String = throwable.message ?: throwable.toString()
+    override val cause: Error? = null
 }
 
 /**
- * A basic [Error] implementation with a message.
+ * A throwable caused by an [Error].
  */
-public class MessageError(
-    override val message: String
-) : Error {
-
-    override val cause: Error? = null
-}
+public class ErrorException(
+    public val error: Error
+) : Exception(error.message)

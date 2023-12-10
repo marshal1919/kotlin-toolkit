@@ -27,7 +27,9 @@ import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.setupActionBarWithNavController
 import androidx.navigation.ui.setupWithNavController
 import com.google.android.material.bottomnavigation.BottomNavigationView
-import org.readium.r2.testapp.bookshelf.BookshelfViewModel
+import com.google.android.material.snackbar.Snackbar
+import org.readium.r2.testapp.utils.extensions.readium.toDebugDescription
+import timber.log.Timber
 
 class MainActivity : AppCompatActivity() {
 
@@ -40,13 +42,14 @@ class MainActivity : AppCompatActivity() {
         menuInflater.inflate(R.menu.mainmenu, menu)
         return true
     }
+    private val viewModel: MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         intent.data?.let {
-            viewModel.importPublicationFromUri(it)
+            viewModel.importPublicationFromStorage(it)
         }
 
         val navView: BottomNavigationView = findViewById(R.id.nav_view)
@@ -92,6 +95,7 @@ class MainActivity : AppCompatActivity() {
                     dictUri=setDictPreferences(it)
                 }
             }
+        viewModel.channel.receive(this) { handleEvent(it) }
     }
 
     override fun onSupportNavigateUp(): Boolean {
@@ -133,5 +137,21 @@ class MainActivity : AppCompatActivity() {
 
         }*/
         sharedStoragePickerLauncher.launch(arrayOf("*/*","text/plain","application/pdf","application/epub+zip"))
+    private fun handleEvent(event: MainViewModel.Event) {
+        val message =
+            when (event) {
+                is MainViewModel.Event.ImportPublicationSuccess ->
+                    getString(R.string.import_publication_success)
+
+                is MainViewModel.Event.ImportPublicationError -> {
+                    Timber.e(event.error.toDebugDescription(this))
+                    event.error.getUserMessage(this)
+                }
+            }
+        Snackbar.make(
+            findViewById(android.R.id.content),
+            message,
+            Snackbar.LENGTH_LONG
+        ).show()
     }
 }

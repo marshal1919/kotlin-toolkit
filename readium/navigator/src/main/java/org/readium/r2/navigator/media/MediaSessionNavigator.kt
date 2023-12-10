@@ -18,8 +18,8 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.ExperimentalTime
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import org.readium.r2.navigator.ExperimentalAudiobook
 import org.readium.r2.navigator.MediaNavigator
+import org.readium.r2.navigator.extensions.normalizeLocator
 import org.readium.r2.navigator.extensions.sum
 import org.readium.r2.navigator.media.extensions.elapsedPosition
 import org.readium.r2.navigator.media.extensions.id
@@ -27,7 +27,10 @@ import org.readium.r2.navigator.media.extensions.isPlaying
 import org.readium.r2.navigator.media.extensions.publicationId
 import org.readium.r2.navigator.media.extensions.resourceHref
 import org.readium.r2.navigator.media.extensions.toPlaybackState
+import org.readium.r2.shared.DelicateReadiumApi
 import org.readium.r2.shared.publication.*
+import org.readium.r2.shared.util.Url
+import org.readium.r2.shared.util.mediatype.MediaType
 import timber.log.Timber
 
 /**
@@ -41,7 +44,7 @@ private val skipBackwardInterval: Duration = 30.seconds
 /**
  * An implementation of [MediaNavigator] using an Android's MediaSession compatible media player.
  */
-@ExperimentalAudiobook
+@Deprecated("Use the new AudioNavigator from the readium-navigator-media-audio module.")
 @OptIn(ExperimentalTime::class)
 public class MediaSessionNavigator(
     override val publication: Publication,
@@ -153,7 +156,9 @@ public class MediaSessionNavigator(
 
     // Navigator
 
-    private val _currentLocator = MutableStateFlow(Locator(href = "#", type = ""))
+    private val _currentLocator = MutableStateFlow(
+        Locator(href = Url("#")!!, mediaType = MediaType.BINARY)
+    )
     override val currentLocator: StateFlow<Locator> get() = _currentLocator.asStateFlow()
 
     /**
@@ -179,8 +184,12 @@ public class MediaSessionNavigator(
         return locator
     }
 
+    @OptIn(DelicateReadiumApi::class)
     override fun go(locator: Locator, animated: Boolean, completion: () -> Unit): Boolean {
         if (!isActive) return false
+
+        @Suppress("NAME_SHADOWING")
+        val locator = publication.normalizeLocator(locator)
 
         listener?.onJumpToLocator(locator)
 
@@ -199,7 +208,7 @@ public class MediaSessionNavigator(
         return go(locator, animated, completion)
     }
 
-    override fun goForward(animated: Boolean, completion: () -> Unit): Boolean {
+    public fun goForward(animated: Boolean, completion: () -> Unit): Boolean {
         if (!isActive) return false
 
         seekRelative(skipForwardInterval)
@@ -207,7 +216,7 @@ public class MediaSessionNavigator(
         return true
     }
 
-    override fun goBackward(animated: Boolean, completion: () -> Unit): Boolean {
+    public fun goBackward(animated: Boolean, completion: () -> Unit): Boolean {
         if (!isActive) return false
 
         seekRelative(-skipBackwardInterval)

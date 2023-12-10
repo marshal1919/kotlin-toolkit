@@ -29,9 +29,76 @@ dependencies {
 }
 ```
 
+### Migration of HREFs and Locators (bookmarks, annotations, etc.)
+
+:warning: This requires a database migration in your application, if you were persisting `Locator` objects.
+
+In Readium v2.x, a `Link` or `Locator`'s `href` could be either:
+
+* a valid absolute URL for a streamed publication, e.g. `https://domain.com/isbn/dir/my%20chapter.html`,
+* a percent-decoded path for a local archive such as an EPUB, e.g. `/dir/my chapter.html`.
+    * Note that it was relative to the root of the archive (`/`).
+
+To improve the interoperability with other Readium toolkits (in particular the Readium Web Toolkits, which only work in a streaming context) **Readium v3 now generates and expects valid URLs** for `Locator` and `Link`'s `href`.
+
+* `https://domain.com/isbn/dir/my%20chapter.html` is left unchanged, as it was already a valid URL.
+* `/dir/my chapter.html` becomes the relative URL path `dir/my%20chapter.html`
+    * We dropped the `/` prefix to avoid issues when resolving to a base URL.
+    * Special characters are percent-encoded.
+    
+**You must migrate the HREFs or Locators stored in your database** when upgrading to Readium 3. To assist you, two helpers are provided: `Url.fromLegacyHref()` and `Locator.fromLegacyJSON()`.
+
+Here's an example of a Jetpack Room migration that can serve as inspiration:
+
+```kotlin
+val MIGRATION_HREF = object : Migration(1, 2) {
+
+    override fun migrate(db: SupportSQLiteDatabase) {
+        val normalizedHrefs: Map<Long, String> = buildMap {
+            db.query("SELECT id, href FROM bookmarks").use { cursor ->
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(0)
+                    val href = cursor.getString(1)
+
+                    val normalizedHref = Url.fromLegacyHref(href)?.toString()
+                    if (normalizedHref != null) {
+                        put(id, normalizedHref)
+                    }
+                }
+            }
+        }
+
+        val stmt = db.compileStatement("UPDATE bookmarks SET href = ? WHERE id = ?")
+        for ((id, href) in normalizedHrefs) {
+            stmt.bindString(1, href)
+            stmt.bindLong(2, id)
+            stmt.executeUpdateDelete()
+        }
+    }
+}
+```
+
+### LcpDialogAuthentication now supports configuration changes.
+
+You no longer need to pass an activity, fragment or view as `sender` to `retrievePassphrase`.
+Instead, call `onParentViewAttachedToWindow` every time you have a
+view attached to a window available as anchor and `onParentViewDetachedFromWindow` every time it
+gets detached. You can monitor these events by setting a `View.OnAttachStateChangeListener` on your
+view.
+
+See the [test-app](https://github.com/readium/kotlin-toolkit/blob/01d6c7936accea2d6b953d435e669260676e8c99/test-app/src/main/java/org/readium/r2/testapp/bookshelf/BookshelfFragment.kt#L68)
+for an example.
+
 ### All resources now have the prefix `readium_`.
 
 To avoid conflicts when merging your app resources, all resources declared in the Readium toolkit now have the prefix `readium_`. This means that you must rename any layouts or strings you have overridden. Here is a comprehensive list of the changes.
+
+### Pdfium and PSPDFKit adapters' namespaces slightly changed
+
+`org.readium.adapters.pspdfkit.document` moved to `org.readium.adapter.pdspdfKit.document`
+`org.readium.adapters.pspdfkit.navigator` moved to `org.readium.adapter.pdspdfKit.navigator`
+`org.readium.adapters.pdfium.document` moved to `org.readium.adapter.pdfium.document`
+`org.readium.adapters.pdfium.navigator` moved to `org.readium.adapter.pdfium.navigator`
 
 #### Layouts
 
@@ -99,16 +166,26 @@ navigator.addInputListener(object : InputListener {
 })
 ```
 
+### New navigator interfaces
+
+An important part of `VisualNavigator` was moved to `DirectionalNavigator`. A new `HyperlinkNavigator`
+interface implemented by the `EpubFragmentNavigator` provides the ability to intercept clicks on
+links to both internal and external URLs. Opening external URLs is no longer handled by the navigator,
+that's something you should do by yourself in the way you like.
+
 ### Edge tap and keyboard navigation
 
 Version 3.0.0 ships with a new `DirectionalNavigationAdapter` component replacing `EdgeTapNavigation`. This helper allows users to turn pages with arrow and space keys on their keyboard or by tapping the edge of the screen.
 
-It's easy to set it up with an implementation of `VisualNavigator`, as it implements `InputListener`.
+It's easy to set it up with an implementation of `DirectionalNavigator`, as it implements `InputListener`.
 
 ```kotlin
-navigator.addInputListener(DirectionalNavigationAdapter(
-    animatedTransition = true
-))
+navigator.addInputListener(
+    DirectionalNavigationAdapter(
+        navigator,
+        animatedTransition = true
+    )
+)
 ```
 
 `DirectionalNavigationAdapter` offers a lot of customization options. Take a look at its API.

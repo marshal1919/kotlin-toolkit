@@ -17,6 +17,9 @@ All notable changes to this project will be documented in this file. Take a look
 * Scroll mode: jumping between two EPUB resources with a horizontal swipe triggers the `Navigator.Listener.onJumpToLocator()` callback.
     * This can be used to allow the user to go back to their previous location if they swiped across chapters by mistake.
 * Support for keyboard events in the EPUB, PDF and image navigators. See `VisualNavigator.addInputListener()`.
+* Support for non-linear EPUB resources with an opt-in in reading apps (contributed by @chrfalch in [#375](https://github.com/readium/kotlin-toolkit/pull/375) and [#376](https://github.com/readium/kotlin-toolkit/pull/376)).
+     1. Override loading non-linear resources with `VisualNavigator.Listener.shouldJumpToLink()`.
+     2. Present a new `EpubNavigatorFragment` by providing a custom `readingOrder` with only this resource to the constructor.
 
 #### Streamer
 
@@ -25,6 +28,8 @@ All notable changes to this project will be documented in this file. Take a look
 ### Changed
 
 * Readium resources are now prefixed with `readium_`. Take care of updating any overridden resource by following [the migration guide](docs/migration-guide.md#300).
+* `Link` and `Locator`'s `href` are normalized as valid URLs to improve interoperability with the Readium Web toolkits.
+    * **You MUST migrate your database if you were persisting HREFs and Locators**. Take a look at [the migration guide](docs/migration-guide.md) for guidance.
 
 #### Shared
 
@@ -39,6 +44,10 @@ All notable changes to this project will be documented in this file. Take a look
 * The new `DirectionalNavigationAdapter` component replaces `EdgeTapNavigation`, helping you turn pages with the arrow and space keyboard keys, or taps on the edge of the screen.
 
 ### Deprecated
+
+#### Shared
+
+* `DefaultHttClient.additionalHeaders` is deprecated. Set all the headers when creating a new `HttpRequest`, or modify outgoing requests in `DefaultHttpClient.Callback.onStartRequest()`.
 
 #### Navigator
 
@@ -56,7 +65,11 @@ All notable changes to this project will be documented in this file. Take a look
 
 #### Streamer
 
-* Fix issue with the TTS starting from the beginning of the chapter instead of the current position.
+* Fixed issue with the TTS starting from the beginning of the chapter instead of the current position.
+
+#### OPDS
+
+* Fixed race conditions causing `ConcurrentModificationException` to be thrown when parsing an OPDS 2 feed.
 
 ## [2.3.0]
 
