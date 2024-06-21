@@ -1,73 +1,79 @@
 [versions]
-agp="8.1.4"
-accompanist = "0.30.1"
-publish-Plugin="1.3.0"
-dokka-version="1.8.20"
-ksp-version="1.9.20-1.0.14"
-ktlint-version="11.5.1"
 
-android-test-core = "1.3.0"
-androidx-activity = "1.8.1"
+kotlin = "1.9.24"
+agp = "8.4.0"
+desugar_jdk_libs = "2.0.4"
+gradle-maven-publish-plugin = "0.28.0"
+
+androidx-activity = "1.9.0"
 androidx-appcompat = "1.6.1"
-androidx-browser = "1.7.0"
+androidx-browser = "1.8.0"
 androidx-cardview = "1.0.0"
-androidx-compose-compiler = "1.5.4"
-androidx-compose-animation = "1.5.4"
-androidx-compose-foundation = "1.5.4"
-androidx-compose-material = "1.5.4"
-androidx-compose-material3 = "1.1.2"
-androidx-compose-runtime = "1.5.4"
-androidx-compose-ui = "1.5.4"
+# Make sure to align with the Kotlin version
+# https://developer.android.com/jetpack/androidx/releases/compose-kotlin
+androidx-compose-compiler = "1.5.14"
+androidx-compose-animation = "1.6.7"
+androidx-compose-foundation = "1.6.7"
+androidx-compose-material = "1.6.7"
+androidx-compose-material3 = "1.2.1"
+androidx-compose-runtime = "1.6.7"
+androidx-compose-ui = "1.6.7"
 androidx-constraintlayout = "2.1.4"
-androidx-core = "1.12.0"
-androidx-datastore = "1.0.0"
+androidx-core = "1.13.1"
+androidx-datastore = "1.1.1"
 androidx-expresso-core = "3.5.1"
 androidx-ext-junit = "1.1.5"
-androidx-fragment-ktx = "1.6.2"
-androidx-junit = "1.1.5"
+androidx-fragment-ktx = "1.7.1"
 androidx-legacy = "1.0.0"
-androidx-lifecycle = "2.6.2"
+androidx-lifecycle = "2.8.0"
 androidx-lifecycle-extensions = "2.2.0"
-androidx-media = "1.6.0"
-androidx-media2 = "1.2.1"
-androidx-media3 = "1.1.0"
-androidx-navigation = "2.7.5"
-androidx-paging = "3.2.1"
+androidx-media = "1.7.0"
+androidx-media2 = "1.3.0"
+androidx-media3 = "1.3.1"
+androidx-navigation = "2.7.7"
+androidx-paging = "3.3.0"
 androidx-recyclerview = "1.3.2"
-androidx-room = "2.5.2"
-androidx-viewpager2 = "1.0.0"
-androidx-webkit = "1.7.0"
-androidx-test-ext-junit = "1.1.5"
+androidx-room = "2.6.1"
+androidx-viewpager2 = "1.1.0"
+androidx-webkit = "1.11.0"
 
-assertj = "3.24.2"
+assertj = "3.25.3"
 
-core = "1.5.0"
-dokka = "1.8.20"
+dokka = "1.9.20"
 
 google-exoplayer = "2.19.1"
-google-material = "1.10.0"
+google-material = "1.12.0"
 
-joda-time = "2.12.5"
-jsoup = "1.16.1"
+joda-time = "2.12.7"
+jsoup = "1.17.2"
 junit = "4.13.2"
 
-junit-jupiter = "5.10.1"
-kotlin = "1.9.20"
-kotlinx-coroutines = "1.7.3"
-kotlinx-coroutines-test = "1.7.3"
-kotlinx-serialization-json = "1.5.1"
+kotlinx-coroutines = "1.8.1"
+kotlinx-coroutines-test = "1.8.1"
+kotlinx-datetime = "0.6.0"
+kotlinx-serialization-json = "1.6.3"
 
-pdfium = "1.9.0"
+# Make sure to align with the Kotlin version.
+# See https://github.com/google/ksp/releases
+ksp = "1.9.24-1.0.20"
+
+ktlint = "11.5.1"
+
+# We cannot upgrade to 1.9.0 as it conflicts with liblcp.
+# See https://github.com/readium/kotlin-toolkit/issues/29
+#noinspection GradleDependency
+pdfium = "1.8.2"
 pdf-viewer = "2.8.2"
+#noinspection GradleDependency
 picasso = "2.8"
 pspdfkit = "8.4.1"
 
-robolectric = "4.11.1"
+robolectric = "4.12.2"
 
 timber = "5.0.1"
 
+
 [libraries]
-accompanist-themeadapter-material = { group = "com.google.accompanist", name = "accompanist-themeadapter-material", version.ref = "accompanist" }
 
 androidx-junit5-test = { module = "androidx.test.ext:junit", version.ref = "androidx-junit" }
 junit-jupiter-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit-jupiter" }
@@ -83,6 +89,7 @@ androidx-compose-foundation = { group = "androidx.compose.foundation", name = "f
 androidx-compose-material = { group = "androidx.compose.material", name = "material", version.ref = "androidx-compose-material" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "androidx-compose-material3" }
 androidx-compose-material-icons = { group = "androidx.compose.material", name = "material-icons-extended", version.ref = "androidx-compose-material" }
+androidx-compose-runtime = { group = "androidx.compose.runtime", name = "runtime", version.ref = "androidx-compose-runtime" }
 androidx-compose-ui = { group = "androidx.compose.ui", name = "ui", version.ref = "androidx-compose-ui" }
 androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling", version.ref = "androidx-compose-ui" }
 androidx-constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "androidx-constraintlayout" }
@@ -123,6 +130,7 @@ assertj = { group = "org.assertj", name = "assertj-core", version.ref = "assertj
 testcore = { module = "androidx.test:core", version.ref = "core" }
 dokka-gradle = { group = "org.jetbrains.dokka", name = "dokka-gradle-plugin", version.ref = "dokka" }
 
+desugar_jdk_libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar_jdk_libs" }
 google-exoplayer-core = { group = "com.google.android.exoplayer", name = "exoplayer-core", version.ref = "google-exoplayer" }
 google-exoplayer-extension-media2 = { group = "com.google.android.exoplayer", name = "extension-media2", version.ref = "google-exoplayer" }
 google-exoplayer-mediasession = { group = "com.google.android.exoplayer", name = "extension-mediasession", version.ref = "google-exoplayer" }
@@ -143,8 +151,8 @@ kotlin-stdlib = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib", versio
 kotlin-test= { group = "org.jetbrains.kotlin", name = "kotlin-test", version.ref = "kotlin" }
 
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "kotlinx-coroutines" }
-kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinx-coroutines-test" }
+kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime", version.ref = "kotlinx-datetime" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinx-serialization-json" }
 
 pdfium = { group = "com.github.barteksc", name = "pdfium-android", version.ref="pdfium" }
@@ -157,15 +165,24 @@ robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "
 timber = { group = "com.jakewharton.timber", name = "timber", version.ref = "timber" }
 androidx-junit-ktx = { group = "androidx.test.ext", name = "junit-ktx", version = "1.1.5" }
 
+plugin-android = { module = "com.android.tools.build:gradle", version.ref = "agp" }
+plugin-kotlin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+plugin-maven-publish = { module = "com.vanniktech:gradle-maven-publish-plugin", version.ref = "gradle-maven-publish-plugin" }
+
+[plugins]
+
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint" }
 
 [bundles]
-compose = ["androidx-compose-activity", "androidx-compose-animation", "androidx-compose-foundation", "androidx-compose-material", "androidx-compose-material3", "androidx-compose-material-icons", "androidx-compose-ui", "androidx-compose-ui-tooling"]
-coroutines = ["kotlinx-coroutines-core", "kotlinx-coroutines-android"]
+
+compose = ["androidx-compose-activity", "androidx-compose-animation", "androidx-compose-foundation", "androidx-compose-material", "androidx-compose-material3", "androidx-compose-material-icons", "androidx-compose-runtime", "androidx-compose-ui", "androidx-compose-ui-tooling"]
 exoplayer = ["google-exoplayer-core", "google-exoplayer-ui", "google-exoplayer-mediasession", "google-exoplayer-workmanager", "google-exoplayer-extension-media2"]
 lifecycle = ["androidx-lifecycle-common", "androidx-lifecycle-extensions", "androidx-lifecycle-livedata", "androidx-lifecycle-runtime", "androidx-lifecycle-viewmodel", "androidx-lifecycle-vmsavedstate", "androidx-lifecycle-viewmodel-compose"]
-media2 = ["androidx-media2-session", "androidx-media2-player"]
+media2 = ["androidx-media2-session", "androidx-media2-player", "google-exoplayer-core", "google-exoplayer-extension-media2"]
 media3 = ["androidx-media3-session", "androidx-media3-common", "androidx-media3-exoplayer"]
-navigation = ["androidx-navigation-fragment", "androidx-navigation-ui"]
 room = ["androidx-room-runtime", "androidx-room-ktx"]
 test-frameworks = ["junit", "androidx-ext-junit", "androidx-expresso-core", "robolectric", "kotlin-junit", "assertj", "kotlinx-coroutines-test"]
 

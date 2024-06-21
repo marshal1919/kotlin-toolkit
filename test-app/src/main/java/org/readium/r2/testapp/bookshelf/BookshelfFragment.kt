@@ -19,10 +19,15 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.snackbar.Snackbar
-import org.readium.r2.shared.util.Url
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+import org.readium.r2.shared.DelicateReadiumApi
+import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.testapp.Application
 import org.readium.r2.testapp.R
 import org.readium.r2.testapp.data.model.Book
@@ -104,9 +109,12 @@ class BookshelfFragment : Fragment() {
                 )
             )
         }
-
-        bookshelfViewModel.books.observe(viewLifecycleOwner) {
-            bookshelfAdapter.submitList(it)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                bookshelfViewModel.books.collectLatest {
+                    bookshelfAdapter.submitList(it)
+                }
+            }
         }
 
         binding.bookshelfAddBookFab.setOnClickListener {
@@ -130,6 +138,7 @@ class BookshelfFragment : Fragment() {
         }
     }
 
+    @OptIn(DelicateReadiumApi::class)
     private fun askForRemoteUrl() {
         val urlEditText = EditText(requireContext())
         MaterialAlertDialogBuilder(requireContext())
@@ -140,7 +149,7 @@ class BookshelfFragment : Fragment() {
                 dialog.cancel()
             }
             .setPositiveButton(getString(R.string.ok)) { _, _ ->
-                val url = Url(urlEditText.text.toString())
+                val url = AbsoluteUrl(urlEditText.text.toString())
                 if (url == null || !URLUtil.isValidUrl(urlEditText.text.toString())) {
                     urlEditText.error = getString(R.string.invalid_url)
                     return@setPositiveButton
@@ -152,27 +161,18 @@ class BookshelfFragment : Fragment() {
     }
 
     private fun handleEvent(event: BookshelfViewModel.Event) {
-        val message =
-            when (event) {
-                is BookshelfViewModel.Event.OpenPublicationError -> {
-                    event.errorMessage
-                }
-
-                is BookshelfViewModel.Event.LaunchReader -> {
-                    val intent = ReaderActivityContract().createIntent(
-                        requireContext(),
-                        event.arguments
-                    )
-                    startActivity(intent)
-                    null
-                }
+        when (event) {
+            is BookshelfViewModel.Event.OpenPublicationError -> {
+                event.error.toUserError().show(requireActivity())
             }
-        message?.let {
-            Snackbar.make(
-                requireView(),
-                it,
-                Snackbar.LENGTH_LONG
-            ).show()
+
+            is BookshelfViewModel.Event.LaunchReader -> {
+                val intent = ReaderActivityContract().createIntent(
+                    requireContext(),
+                    event.arguments
+                )
+                startActivity(intent)
+            }
         }
     }
 

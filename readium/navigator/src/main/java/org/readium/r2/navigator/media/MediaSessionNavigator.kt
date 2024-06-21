@@ -4,6 +4,8 @@
  * available in the top-level LICENSE file of the project.
  */
 
+@file:Suppress("DEPRECATION")
+
 package org.readium.r2.navigator.media
 
 import android.media.session.PlaybackState
@@ -28,6 +30,7 @@ import org.readium.r2.navigator.media.extensions.publicationId
 import org.readium.r2.navigator.media.extensions.resourceHref
 import org.readium.r2.navigator.media.extensions.toPlaybackState
 import org.readium.r2.shared.DelicateReadiumApi
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.publication.*
 import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.mediatype.MediaType
@@ -44,10 +47,13 @@ private val skipBackwardInterval: Duration = 30.seconds
 /**
  * An implementation of [MediaNavigator] using an Android's MediaSession compatible media player.
  */
-@Deprecated("Use the new AudioNavigator from the readium-navigator-media-audio module.")
+@Deprecated(
+    "Use the new AudioNavigator from the readium-navigator-media-audio module. This class will be removed in a future 3.x release."
+)
+@InternalReadiumApi
 @OptIn(ExperimentalTime::class)
 public class MediaSessionNavigator(
-    override val publication: Publication,
+    public val publication: Publication,
     public val publicationId: PublicationId,
     public val controller: MediaControllerCompat,
     public var listener: Listener? = null
@@ -185,7 +191,7 @@ public class MediaSessionNavigator(
     }
 
     @OptIn(DelicateReadiumApi::class)
-    override fun go(locator: Locator, animated: Boolean, completion: () -> Unit): Boolean {
+    override fun go(locator: Locator, animated: Boolean): Boolean {
         if (!isActive) return false
 
         @Suppress("NAME_SHADOWING")
@@ -199,28 +205,27 @@ public class MediaSessionNavigator(
                 putParcelable("locator", locator)
             }
         )
-        completion()
         return true
     }
 
-    override fun go(link: Link, animated: Boolean, completion: () -> Unit): Boolean {
+    override fun go(link: Link, animated: Boolean): Boolean {
         val locator = publication.locatorFromLink(link) ?: return false
-        return go(locator, animated, completion)
+        return go(locator, animated)
     }
 
-    public fun goForward(animated: Boolean, completion: () -> Unit): Boolean {
+    @Suppress("UNUSED_PARAMETER")
+    public fun goForward(animated: Boolean = true): Boolean {
         if (!isActive) return false
 
         seekRelative(skipForwardInterval)
-        completion()
         return true
     }
 
-    public fun goBackward(animated: Boolean, completion: () -> Unit): Boolean {
+    @Suppress("UNUSED_PARAMETER")
+    public fun goBackward(animated: Boolean = true): Boolean {
         if (!isActive) return false
 
         seekRelative(-skipBackwardInterval)
-        completion()
         return true
     }
 

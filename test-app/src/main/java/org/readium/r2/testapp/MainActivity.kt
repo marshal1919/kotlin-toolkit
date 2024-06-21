@@ -28,8 +28,6 @@ import androidx.navigation.ui.setupActionBarWithNavController
 import androidx.navigation.ui.setupWithNavController
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.snackbar.Snackbar
-import org.readium.r2.testapp.utils.extensions.readium.toDebugDescription
-import timber.log.Timber
 
 class MainActivity : AppCompatActivity() {
 
@@ -47,10 +45,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
-        intent.data?.let {
-            viewModel.importPublicationFromStorage(it)
-        }
 
         val navView: BottomNavigationView = findViewById(R.id.nav_view)
         val navHostFragment =
@@ -138,20 +132,17 @@ class MainActivity : AppCompatActivity() {
         }*/
         sharedStoragePickerLauncher.launch(arrayOf("*/*","text/plain","application/pdf","application/epub+zip"))
     private fun handleEvent(event: MainViewModel.Event) {
-        val message =
-            when (event) {
-                is MainViewModel.Event.ImportPublicationSuccess ->
-                    getString(R.string.import_publication_success)
+        when (event) {
+            is MainViewModel.Event.ImportPublicationSuccess ->
+                Snackbar.make(
+                    findViewById(android.R.id.content),
+                    getString(R.string.import_publication_success),
+                    Snackbar.LENGTH_LONG
+                ).show()
 
-                is MainViewModel.Event.ImportPublicationError -> {
-                    Timber.e(event.error.toDebugDescription(this))
-                    event.error.getUserMessage(this)
-                }
+            is MainViewModel.Event.ImportPublicationError -> {
+                event.error.toUserError().show(this)
             }
-        Snackbar.make(
-            findViewById(android.R.id.content),
-            message,
-            Snackbar.LENGTH_LONG
-        ).show()
+        }
     }
 }

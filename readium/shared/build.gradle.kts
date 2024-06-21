@@ -5,61 +5,21 @@
  */
 
 plugins {
-    id("com.android.library")
-    kotlin("android")
-    kotlin("plugin.parcelize")
-    kotlin("plugin.serialization")
+    id("readium.library-conventions")
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
-    resourcePrefix = "readium_"
-
-    compileSdk = 34
-    defaultConfig {
-        minSdk = 21
-        targetSdk = 34
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-    kotlinOptions {
-        allWarningsAsErrors = true
-        freeCompilerArgs = freeCompilerArgs + listOf(
-            "-opt-in=kotlin.RequiresOptIn",
-            "-opt-in=org.readium.r2.shared.InternalReadiumApi"
-        )
-    }
-    testOptions {
-        unitTests.isIncludeAndroidResources = true
-    }
-    buildTypes {
-        getByName("release") {
-            isMinifyEnabled = false
-            proguardFiles(getDefaultProguardFile("proguard-android.txt"))
-        }
-    }
-    buildFeatures {
-        buildConfig = true
-    }
     namespace = "org.readium.r2.shared"
 }
-
-kotlin {
-    explicitApi()
-}
-
-rootProject.ext["publish.artifactId"] = "readium-shared"
-apply(from = "$rootDir/scripts/publish-module.gradle")
 
 dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.browser)
     implementation(libs.timber)
-    implementation(libs.joda.time)
     implementation(libs.kotlin.reflect)
-    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.kotlinx.datetime)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.jsoup)
 

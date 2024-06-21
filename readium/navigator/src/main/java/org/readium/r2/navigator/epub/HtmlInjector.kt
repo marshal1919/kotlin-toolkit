@@ -15,9 +15,9 @@ import org.readium.r2.shared.publication.services.isProtected
 import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.Try
 import org.readium.r2.shared.util.Url
-import org.readium.r2.shared.util.getOrElse
+import org.readium.r2.shared.util.data.ReadError
+import org.readium.r2.shared.util.mediatype.MediaType
 import org.readium.r2.shared.util.resource.Resource
-import org.readium.r2.shared.util.resource.ResourceTry
 import org.readium.r2.shared.util.resource.TransformingResource
 import timber.log.Timber
 
@@ -29,23 +29,26 @@ import timber.log.Timber
 @OptIn(ExperimentalReadiumApi::class)
 internal fun Resource.injectHtml(
     publication: Publication,
+    mediaType: MediaType,
     css: ReadiumCss,
     baseHref: AbsoluteUrl,
     disableSelectionWhenProtected: Boolean
 ): Resource =
     TransformingResource(this) { bytes ->
-        val mediaType = mediaType()
-            .getOrElse {
-                return@TransformingResource ResourceTry.failure(it)
-            }
-            .takeIf { it.isHtml }
-            ?: return@TransformingResource ResourceTry.success(bytes)
+        if (!mediaType.isHtml) {
+            return@TransformingResource Try.success(bytes)
+        }
 
         var content = bytes.toString(mediaType.charset ?: Charsets.UTF_8).trim()
         val injectables = mutableListOf<String>()
 
         if (publication.metadata.presentation.layout == EpubLayout.REFLOWABLE) {
-            content = css.injectHtml(content)
+            content = try {
+                css.injectHtml(content)
+            } catch (e: Exception) {
+                return@TransformingResource Try.failure(ReadError.Decoding(e))
+            }
+
             injectables.add(
                 script(
                     baseHref.resolve(Url("readium/scripts/readium-reflowable.js")!!)
@@ -74,7 +77,7 @@ internal fun Resource.injectHtml(
 
         val headEndIndex = content.indexOf("</head>", 0, true)
         if (headEndIndex == -1) {
-            Timber.e("</head> closing tag not found in resource with href: $source")
+            Timber.e("</head> closing tag not found in resource with href: $sourceUrl")
         } else {
             content = StringBuilder(content)
                 .insert(headEndIndex, "\n" + injectables.joinToString("\n") + "\n")

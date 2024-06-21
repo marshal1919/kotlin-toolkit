@@ -179,6 +179,14 @@ public class ExoPlayerEngine private constructor(
     private val _playback: MutableStateFlow<AudioEngine.Playback> =
         MutableStateFlow(exoPlayer.playback)
 
+    private val sessionPlayer = object :
+        ForwardingPlayer(exoPlayer) {
+
+        override fun release() {
+            // This object does not own the ExoAudiobookPlayer instance, do not close it.
+        }
+    }
+
     init {
         coroutineScope.launch {
             val positionRefreshDelay = (1.0 / configuration.positionRefreshRate.value).seconds
@@ -227,7 +235,7 @@ public class ExoPlayerEngine private constructor(
     }
 
     override fun asPlayer(): Player {
-        return exoPlayer
+        return sessionPlayer
     }
 
     override fun submitPreferences(preferences: ExoPlayerPreferences) {
@@ -252,6 +260,6 @@ public class ExoPlayerEngine private constructor(
             Player.STATE_READY -> AudioEngine.State.Ready
             Player.STATE_BUFFERING -> AudioEngine.State.Buffering
             Player.STATE_ENDED -> AudioEngine.State.Ended
-            else -> AudioEngine.State.Error(Error(playerError!!))
+            else -> AudioEngine.State.Failure(Error(playerError!!))
         }
 }

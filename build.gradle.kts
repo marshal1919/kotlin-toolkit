@@ -14,23 +14,8 @@ plugins {
     alias(libs.plugins.dokka) apply true
     alias(libs.plugins.ksp) apply false
     alias(libs.plugins.ktlint) apply true
-    alias(libs.plugins.serialization) apply false
-    //id("com.android.application") apply false
-    //id("com.android.library") apply false
-    //id("io.github.gradle-nexus.publish-plugin") apply true
-    //id("org.jetbrains.dokka") apply true
-    //id("org.jetbrains.kotlin.android") apply false
-    //id("com.google.devtools.ksp") apply false
-    //id("org.jlleitschuh.gradle.ktlint") apply true
+    alias(libs.plugins.serialization) apply false    
 }
-
-apply(from = "$rootDir/scripts/publish-root.gradle")
-
-ext.set("publish.groupId", "org.readium.kotlin-toolkit")
-ext.set("publish.version", "3.0.0")
-//extra["publish.groupId"]="org.readium.kotlin-toolkit"
-//extra["publish.version"]="3.0.0"
-
 
 subprojects {
 apply(plugin = "org.jlleitschuh.gradle.ktlint")

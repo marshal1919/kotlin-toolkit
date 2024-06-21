@@ -4,6 +4,8 @@
  * available in the top-level LICENSE file of the project.
  */
 
+@file:Suppress("DEPRECATION")
+
 package org.readium.navigator.media2
 
 import androidx.media2.common.MediaItem
@@ -18,14 +20,14 @@ internal enum class SessionPlayerState {
     Idle,
     Paused,
     Playing,
-    Error;
+    Failure;
 
     companion object {
         fun fromCode(sessionPlayerState: Int) = when (sessionPlayerState) {
             SessionPlayer.PLAYER_STATE_IDLE -> Idle
             SessionPlayer.PLAYER_STATE_PAUSED -> Paused
             SessionPlayer.PLAYER_STATE_PLAYING -> Playing
-            else -> Error // SessionPlayer.PLAYER_STATE_ERROR
+            else -> Failure // SessionPlayer.PLAYER_STATE_ERROR
         }
     }
 }
@@ -135,19 +137,15 @@ internal val SessionPlayer.playbackSpeedNullable
 internal val SessionPlayer.currentIndexNullable
     get() = currentMediaItemIndex.takeUnless { it == SessionPlayer.INVALID_ITEM_INDEX }
 
-@ExperimentalTime
 internal val SessionPlayer.currentPositionDuration: Duration?
     get() = msToDuration(currentPosition)
 
-@ExperimentalTime
 internal val SessionPlayer.bufferedPositionDuration: Duration?
     get() = msToDuration(bufferedPosition)
 
-@ExperimentalTime
 internal val SessionPlayer.currentDuration: Duration?
     get() = msToDuration(duration)
 
-@ExperimentalTime
 private fun msToDuration(ms: Long): Duration? =
     if (ms == SessionPlayer.UNKNOWN_TIME) {
         null
@@ -155,19 +153,16 @@ private fun msToDuration(ms: Long): Duration? =
         ms.milliseconds
     }
 
-@ExperimentalTime
 internal val MediaMetadata.duration: Duration?
     get() = getLong(MediaMetadata.METADATA_KEY_DURATION)
         .takeUnless { it == 0L }
         ?.milliseconds
 
-@ExperimentalTime
 internal val List<MediaMetadata>.durations: List<Duration>?
     get() {
         val durations = mapNotNull { it.duration }
         return durations.takeIf { it.size == this.size }
     }
 
-@ExperimentalTime
 internal val List<MediaItem>.metadata: List<MediaMetadata>
     get() = map { it.metadata!! }

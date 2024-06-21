@@ -11,11 +11,8 @@ import org.gradle.internal.impldep.org.apache.commons.lang.mutable.Mutable
 plugins {
     id("com.android.application")
     kotlin("android")
-    id("com.google.devtools.ksp")
-    kotlin("plugin.parcelize")
-    //id("de.mannodermaus.android-junit5").version("1.8.2.1")
-    //kotlin("jvm")
-    //id("java")
+    kotlin("plugin.parcelize")    
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -26,7 +23,8 @@ android {
 
         applicationId = "org.readium.r2reader"
 
-        versionName = "3.0.0"
+        versionName = "3.0.0-beta.1"
+        versionCode = 300000
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk.abiFilters.add("armeabi-v7a")
@@ -36,11 +34,12 @@ android {
         //testInstrumentationRunnerArguments["runnerBuiler"]= "de.mannodermaus.junit5.AndroidJUnit5Builder"
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+        isCoreLibraryDesugaringEnabled = true
     }
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
+        jvmTarget = JavaVersion.VERSION_1_8.toString()
         freeCompilerArgs = freeCompilerArgs + "-opt-in=kotlin.RequiresOptIn"
     }
     testOptions {
@@ -79,6 +78,8 @@ android {
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
+
     implementation(libs.kotlin.stdlib)
     implementation(libs.androidx.legacy.v4)
 
@@ -95,9 +96,6 @@ dependencies {
     // Only required if you want to support PDF files using PDFium.
     implementation(project(":readium:adapters:pdfium"))
 
-    implementation(libs.accompanist.themeadapter.material)
-
-    implementation(libs.androidx.compose.activity)
     implementation(libs.androidx.activity.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.browser)
@@ -121,7 +119,7 @@ dependencies {
     implementation(libs.timber)
     implementation(libs.picasso)
     implementation(libs.joda.time)
-    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.android)
     implementation(libs.jsoup)
 
     implementation(libs.bundles.media3)

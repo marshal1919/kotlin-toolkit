@@ -10,7 +10,6 @@ import android.os.Build
 import android.os.Bundle
 import android.view.MenuItem
 import android.view.WindowManager
-import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
@@ -18,8 +17,6 @@ import androidx.fragment.app.FragmentResultListener
 import androidx.fragment.app.commit
 import androidx.fragment.app.commitNow
 import androidx.lifecycle.ViewModelProvider
-import org.readium.navigator.media2.ExperimentalMedia2
-import org.readium.r2.shared.UserException
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.util.toUri
 import org.readium.r2.testapp.Application
@@ -29,9 +26,7 @@ import org.readium.r2.testapp.drm.DrmManagementContract
 import org.readium.r2.testapp.drm.DrmManagementFragment
 import org.readium.r2.testapp.outline.OutlineContract
 import org.readium.r2.testapp.outline.OutlineFragment
-import org.readium.r2.testapp.utils.extensions.readium.toDebugDescription
 import org.readium.r2.testapp.utils.launchWebBrowser
-import timber.log.Timber
 
 /*
  * An activity to read a publication
@@ -52,15 +47,6 @@ open class ReaderActivity : AppCompatActivity() {
     private lateinit var readerFragment: BaseReaderFragment
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        /*
-         * We provide dummy publications if the [ReaderActivity] is restored after the app process
-         * was killed because the [ReaderRepository] is empty.
-         * In that case, finish the activity as soon as possible and go back to the previous one.
-         */
-        if (model.publication.readingOrder.isEmpty()) {
-            finish()
-        }
-
         super.onCreate(savedInstanceState)
 
         val binding = ActivityReaderBinding.inflate(layoutInflater)
@@ -112,7 +98,6 @@ open class ReaderActivity : AppCompatActivity() {
         }
     }
 
-    @OptIn(ExperimentalMedia2::class)
     private fun createReaderFragment(readerData: ReaderInitData): BaseReaderFragment? {
         val readerClass: Class<out Fragment>? = when (readerData) {
             is EpubReaderInitData -> EpubReaderFragment::class.java
@@ -153,11 +138,6 @@ open class ReaderActivity : AppCompatActivity() {
         )
     }
 
-    override fun finish() {
-        model.close()
-        super.finish()
-    }
-
     private fun handleReaderFragmentEvent(command: ReaderViewModel.ActivityCommand) {
         when (command) {
             is ReaderViewModel.ActivityCommand.OpenOutlineRequested ->
@@ -167,13 +147,8 @@ open class ReaderActivity : AppCompatActivity() {
             is ReaderViewModel.ActivityCommand.OpenExternalLink ->
                 launchWebBrowser(this, command.url.toUri())
             is ReaderViewModel.ActivityCommand.ToastError ->
-                showError(command.error)
+                command.error.show(this)
         }
-    }
-
-    private fun showError(error: UserException) {
-        Timber.e(error.toDebugDescription(this))
-        Toast.makeText(this, error.getUserMessage(this), Toast.LENGTH_LONG).show()
     }
 
     private fun showOutlineFragment() {

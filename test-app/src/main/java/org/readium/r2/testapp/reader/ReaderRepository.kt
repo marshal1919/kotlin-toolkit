@@ -7,7 +7,6 @@
 package org.readium.r2.testapp.reader
 
 import android.app.Application
-import androidx.annotation.StringRes
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences as JetpackPreferences
 import org.json.JSONObject
@@ -18,13 +17,13 @@ import org.readium.navigator.media.tts.TtsNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.pdf.PdfNavigatorFactory
 import org.readium.r2.shared.ExperimentalReadiumApi
-import org.readium.r2.shared.UserException
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.allAreHtml
 import org.readium.r2.shared.publication.services.isRestricted
+import org.readium.r2.shared.publication.services.protectionError
+import org.readium.r2.shared.util.DebugError
 import org.readium.r2.shared.util.Try
-import org.readium.r2.shared.util.asset.AssetRetriever
 import org.readium.r2.shared.util.getOrElse
 import org.readium.r2.testapp.Readium
 import org.readium.r2.testapp.data.BookRepository
@@ -50,41 +49,6 @@ class ReaderRepository(
     private val bookRepository: BookRepository,
     private val preferencesDataStore: DataStore<JetpackPreferences>
 ) {
-    sealed class OpeningError(
-        content: Content,
-        cause: Exception?
-    ) : UserException(content, cause) {
-
-        constructor(@StringRes userMessageId: Int) :
-            this(Content(userMessageId), null)
-
-        constructor(cause: UserException) :
-            this(Content(cause), cause)
-
-        class PublicationError(
-            override val cause: UserException
-        ) : OpeningError(cause) {
-
-            companion object {
-
-                operator fun invoke(
-                    error: AssetRetriever.Error
-                ): OpeningError = PublicationError(
-                    org.readium.r2.testapp.domain.PublicationError(
-                        error
-                    )
-                )
-
-                operator fun invoke(
-                    error: Publication.OpenError
-                ): OpeningError = PublicationError(
-                    org.readium.r2.testapp.domain.PublicationError(
-                        error
-                    )
-                )
-            }
-        }
-    }
 
     private val coroutineQueue: CoroutineQueue =
         CoroutineQueue()
@@ -94,6 +58,9 @@ class ReaderRepository(
 
     private val mediaServiceFacade: MediaServiceFacade =
         MediaServiceFacade(application)
+
+    fun isEmpty() =
+        repository.isEmpty()
 
     operator fun get(bookId: Long): ReaderInitData? =
         repository[bookId]
@@ -110,19 +77,34 @@ class ReaderRepository(
 
         val asset = readium.assetRetriever.retrieve(
             book.url,
-            book.mediaType,
-            book.assetType
-        ).getOrElse { return Try.failure(OpeningError.PublicationError(it)) }
+            book.mediaType
+        ).getOrElse {
+            return Try.failure(
+                OpeningError.PublicationError(
+                    PublicationError(it)
+                )
+            )
+        }
 
-        val publication = readium.publicationFactory.open(
+        val publication = readium.publicationOpener.open(
             asset,
-            contentProtectionScheme = book.drmScheme,
             allowUserInteraction = true
-        ).getOrElse { return Try.failure(OpeningError.PublicationError(it)) }
+        ).getOrElse {
+            return Try.failure(
+                OpeningError.PublicationError(
+                    PublicationError(it)
+                )
+            )
+        }
 
         // The publication is protected with a DRM and not unlocked.
         if (publication.isRestricted) {
-            return Try.failure(OpeningError.PublicationError(PublicationError.Forbidden()))
+            return Try.failure(
+                OpeningError.RestrictedPublication(
+                    publication.protectionError
+                        ?: DebugError("Publication is restricted.")
+                )
+            )
         }
 
         val initialLocator = book.progression
@@ -139,11 +121,19 @@ class ReaderRepository(
                 openImage(bookId, publication, initialLocator)
             else ->
                 Try.failure(
-                    OpeningError.PublicationError(PublicationError.UnsupportedAsset())
+                    OpeningError.CannotRender(
+                        DebugError("No navigator supports this publication.")
+                    )
                 )
         }
 
-        return readerInitData.map { repository[bookId] = it }
+        return readerInitData.map {
+            repository[bookId] = it
+
+            if (it is MediaReaderInitData) {
+                mediaServiceFacade.openSession(bookId, it.mediaNavigator)
+            }
+        }
     }
 
     private suspend fun openAudio(
@@ -159,17 +149,25 @@ class ReaderRepository(
             publication,
             ExoPlayerEngineProvider(application)
         ) ?: return Try.failure(
-            OpeningError.PublicationError(PublicationError.UnsupportedAsset())
+            OpeningError.CannotRender(
+                DebugError("Cannot create audio navigator factory.")
+            )
         )
 
         val navigator = navigatorFactory.createNavigator(
             initialLocator,
             initialPreferences
-        ) ?: return Try.failure(
-            OpeningError.PublicationError(PublicationError.UnsupportedAsset())
-        )
+        ).getOrElse {
+            return Try.failure(
+                when (it) {
+                    is AudioNavigatorFactory.Error.EngineInitialization ->
+                        OpeningError.AudioEngineInitialization(it)
+                    is AudioNavigatorFactory.Error.UnsupportedPublication ->
+                        OpeningError.CannotRender(it)
+                }
+            )
+        }
 
-        mediaServiceFacade.openSession(bookId, navigator)
         val initData = MediaReaderInitData(
             bookId,
             publication,

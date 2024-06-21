@@ -10,12 +10,12 @@ import android.app.Notification
 import android.graphics.Bitmap
 import android.os.Bundle
 import android.os.ResultReceiver
-import org.readium.r2.navigator.ExperimentalAudiobook
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.PublicationId
-import org.readium.r2.shared.util.resource.Resource
+import org.readium.r2.shared.util.data.ReadError
 
 /**
  * Media player compatible with Android's MediaSession and handling the playback for
@@ -25,7 +25,7 @@ import org.readium.r2.shared.util.resource.Resource
  * [MediaService], implementers MUST map a location in the [Publication] to a media ID
  * `publicationId#resourceHref` with a [Locator] as a `locator` extra field.
  */
-@ExperimentalAudiobook
+@InternalReadiumApi
 public interface MediaPlayer {
 
     public data class NotificationMetadata(
@@ -59,7 +59,7 @@ public interface MediaPlayer {
          * Called when a resource failed to be loaded, for example because the Internet connection
          * is offline and the resource is streamed.
          */
-        public fun onResourceLoadFailed(link: Link, error: Resource.Exception)
+        public fun onResourceLoadFailed(link: Link, error: ReadError)
 
         /**
          * Creates the [NotificationMetadata] for the given resource [link].

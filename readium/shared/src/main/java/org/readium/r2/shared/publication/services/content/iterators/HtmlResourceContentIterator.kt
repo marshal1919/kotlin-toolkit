@@ -4,6 +4,8 @@
  * available in the top-level LICENSE file of the project.
  */
 
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.r2.shared.publication.services.content.iterators
 
 import kotlinx.coroutines.Dispatchers
@@ -15,7 +17,9 @@ import org.jsoup.nodes.TextNode
 import org.jsoup.parser.Parser
 import org.jsoup.select.NodeTraversor
 import org.jsoup.select.NodeVisitor
+import org.readium.r2.shared.DelicateReadiumApi
 import org.readium.r2.shared.ExperimentalReadiumApi
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.extensions.tryOrLog
 import org.readium.r2.shared.extensions.tryOrNull
 import org.readium.r2.shared.publication.Link
@@ -31,12 +35,15 @@ import org.readium.r2.shared.publication.services.content.Content.ImageElement
 import org.readium.r2.shared.publication.services.content.Content.TextElement
 import org.readium.r2.shared.publication.services.content.Content.VideoElement
 import org.readium.r2.shared.publication.services.positionsByReadingOrder
+import org.readium.r2.shared.util.DebugError
 import org.readium.r2.shared.util.Language
 import org.readium.r2.shared.util.Url
+import org.readium.r2.shared.util.data.decodeString
+import org.readium.r2.shared.util.flatMap
 import org.readium.r2.shared.util.getOrElse
 import org.readium.r2.shared.util.mediatype.MediaType
 import org.readium.r2.shared.util.resource.Resource
-import org.readium.r2.shared.util.resource.readAsString
+import org.readium.r2.shared.util.toDebugDescription
 import org.readium.r2.shared.util.use
 import timber.log.Timber
 
@@ -64,9 +71,10 @@ public class HtmlResourceContentIterator internal constructor(
             servicesHolder: PublicationServicesHolder,
             readingOrderIndex: Int,
             resource: Resource,
+            mediaType: MediaType,
             locator: Locator
         ): Content.Iterator? {
-            if (resource.mediaType().getOrNull()?.matchesAny(MediaType.HTML, MediaType.XHTML) != true) {
+            if (!mediaType.matchesAny(MediaType.HTML, MediaType.XHTML)) {
                 return null
             }
 
@@ -152,10 +160,14 @@ public class HtmlResourceContentIterator internal constructor(
     private suspend fun parseElements(): ParsedElements =
         withContext(Dispatchers.Default) {
             val document = resource.use { res ->
-                val html = res.readAsString().getOrElse {
-                    Timber.w(it, "Failed to read HTML resource")
-                    return@withContext ParsedElements()
-                }
+                val html = res
+                    .read()
+                    .flatMap { it.decodeString() }
+                    .getOrElse {
+                        val error = DebugError("Failed to read HTML resource", it.cause)
+                        Timber.w(error.toDebugDescription())
+                        return@withContext ParsedElements()
+                    }
 
                 Jsoup.parse(html)
             }
@@ -268,6 +280,7 @@ public class HtmlResourceContentIterator internal constructor(
             )
         }
 
+        @OptIn(DelicateReadiumApi::class)
         override fun head(node: Node, depth: Int) {
             if (node is Element) {
                 val parent = ParentElement(node)

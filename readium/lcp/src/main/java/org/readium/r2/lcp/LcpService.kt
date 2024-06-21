@@ -12,8 +12,6 @@ package org.readium.r2.lcp
 import android.content.Context
 import java.io.File
 import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.readium.r2.lcp.auth.LcpDialogAuthentication
 import org.readium.r2.lcp.license.model.LicenseDocument
 import org.readium.r2.lcp.persistence.LcpDatabase
@@ -30,9 +28,8 @@ import org.readium.r2.shared.publication.protection.ContentProtection
 import org.readium.r2.shared.util.Try
 import org.readium.r2.shared.util.asset.Asset
 import org.readium.r2.shared.util.asset.AssetRetriever
-import org.readium.r2.shared.util.downloads.DownloadManager
-import org.readium.r2.shared.util.mediatype.MediaType
-import org.readium.r2.shared.util.mediatype.MediaTypeRetriever
+import org.readium.r2.shared.util.asset.ContainerAsset
+import org.readium.r2.shared.util.format.Format
 
 /**
  * Service used to acquire and open publications protected with LCP.
@@ -42,44 +39,41 @@ public interface LcpService {
     /**
      * Returns if the file is a LCP license document or a publication protected by LCP.
      */
-    public suspend fun isLcpProtected(file: File): Boolean
-
-    /**
-     * Returns if the asset is a LCP license document or a publication protected by LCP.
-     */
-    public suspend fun isLcpProtected(asset: Asset): Boolean
+    @Deprecated(
+        "Use an AssetSniffer and check the conformance of the returned format to LcpSpecification",
+        level = DeprecationLevel.ERROR
+    )
+    public suspend fun isLcpProtected(file: File): Boolean {
+        throw NotImplementedError()
+    }
 
     /**
      * Acquires a protected publication from a standalone LCPL's bytes.
      *
+     * License will be injected into the publication archive without explicitly calling
+     * [injectLicenseDocument].
      * You can cancel the on-going acquisition by cancelling its parent coroutine context.
      *
      * @param onProgress Callback to follow the acquisition progress from 0.0 to 1.0.
      */
-    @Deprecated(
-        "Use a LcpPublicationRetriever instead.",
-        ReplaceWith("publicationRetriever()"),
-        level = DeprecationLevel.ERROR
-    )
-    public suspend fun acquirePublication(lcpl: ByteArray, onProgress: (Double) -> Unit = {}): Try<AcquiredPublication, LcpException>
+    public suspend fun acquirePublication(
+        lcpl: ByteArray,
+        onProgress: (Double) -> Unit = {}
+    ): Try<AcquiredPublication, LcpError>
 
     /**
      * Acquires a protected publication from a standalone LCPL file.
      *
+     * License will be injected into the publication archive without explicitly calling
+     * [injectLicenseDocument].
      * You can cancel the on-going acquisition by cancelling its parent coroutine context.
      *
      * @param onProgress Callback to follow the acquisition progress from 0.0 to 1.0.
      */
-    @Deprecated(
-        "Use a LcpPublicationRetriever instead.",
-        ReplaceWith("publicationRetriever()"),
-        level = DeprecationLevel.ERROR
-    )
-    public suspend fun acquirePublication(lcpl: File, onProgress: (Double) -> Unit = {}): Try<AcquiredPublication, LcpException> = withContext(
-        Dispatchers.IO
-    ) {
-        throw NotImplementedError()
-    }
+    public suspend fun acquirePublication(
+        lcpl: File,
+        onProgress: (Double) -> Unit = {}
+    ): Try<AcquiredPublication, LcpError>
 
     /**
      * Opens the LCP license of a protected publication, to access its DRM metadata and decipher
@@ -89,13 +83,21 @@ public interface LcpService {
      *        The request will be cancelled if no passphrase is found in the LCP passphrase storage
      *        and the provided [authentication].
      * @param allowUserInteraction Indicates whether the user can be prompted for their passphrase.
+     * @param sender Free object that can be used by reading apps to give some UX context when
+     *        presenting dialogs with [LcpAuthenticating].
      */
+    @Deprecated(
+        "Use the overload taking an asset instead.",
+        level = DeprecationLevel.ERROR
+    )
     public suspend fun retrieveLicense(
         file: File,
-        mediaType: MediaType,
-        authentication: LcpAuthenticating,
-        allowUserInteraction: Boolean
-    ): Try<LcpLicense, LcpException>
+        authentication: LcpAuthenticating = LcpDialogAuthentication(),
+        allowUserInteraction: Boolean,
+        sender: Any? = null
+    ): Try<LcpLicense, LcpError>? {
+        throw NotImplementedError()
+    }
 
     /**
      * Opens the LCP license of a protected publication, to access its DRM metadata and decipher
@@ -115,13 +117,24 @@ public interface LcpService {
         asset: Asset,
         authentication: LcpAuthenticating,
         allowUserInteraction: Boolean
-    ): Try<LcpLicense, LcpException>
+    ): Try<LcpLicense, LcpError>
 
     /**
-     * Creates an [LcpPublicationRetriever] instance which can be used to acquire a protected
-     * publication from an LCP License Document.
+     * Retrieves the license document from a LCP-protected publication asset.
      */
-    public fun publicationRetriever(): LcpPublicationRetriever
+    public suspend fun retrieveLicenseDocument(
+        asset: ContainerAsset
+    ): Try<LicenseDocument, LcpError>
+
+    /**
+     * Injects a [licenseDocument] into the given [publicationFile] package.
+     *
+     * This is useful if you downloaded the publication yourself instead of using [acquirePublication].
+     */
+    public suspend fun injectLicenseDocument(
+        licenseDocument: LicenseDocument,
+        publicationFile: File
+    ): Try<Unit, LcpError>
 
     /**
      * Creates a [ContentProtection] instance which can be used with a Streamer to unlock
@@ -146,7 +159,7 @@ public interface LcpService {
     public data class AcquiredPublication(
         val localFile: File,
         val suggestedFilename: String,
-        val mediaType: MediaType,
+        val format: Format,
         val licenseDocument: LicenseDocument
     ) {
         @Deprecated(
@@ -161,12 +174,15 @@ public interface LcpService {
 
         /**
          * LCP service factory.
+         *
+         * @param deviceName Device name used when registering a license to an LSD server.
+         * If not provided, the device name will be generated from the device's manufacturer and
+         * model.
          */
         public operator fun invoke(
             context: Context,
             assetRetriever: AssetRetriever,
-            mediaTypeRetriever: MediaTypeRetriever,
-            downloadManager: DownloadManager
+            deviceName: String? = null
         ): LcpService? {
             if (!LcpClient.isAvailable()) {
                 return null
@@ -176,8 +192,9 @@ public interface LcpService {
             val deviceRepository = DeviceRepository(db)
             val passphraseRepository = PassphrasesRepository(db)
             val licenseRepository = LicensesRepository(db)
-            val network = NetworkService(mediaTypeRetriever)
+            val network = NetworkService()
             val device = DeviceService(
+                deviceName = deviceName,
                 repository = deviceRepository,
                 network = network,
                 context = context
@@ -191,9 +208,7 @@ public interface LcpService {
                 network = network,
                 passphrases = passphrases,
                 context = context,
-                assetRetriever = assetRetriever,
-                mediaTypeRetriever = mediaTypeRetriever,
-                downloadManager = downloadManager
+                assetRetriever = assetRetriever
             )
         }
 
@@ -203,19 +218,18 @@ public interface LcpService {
             ReplaceWith("LcpService(context, AssetRetriever(), MediaTypeRetriever())"),
             level = DeprecationLevel.ERROR
         )
-        public fun create(context: Context): LcpService? = throw NotImplementedError()
+        public fun create(context: Context): LcpService = throw NotImplementedError()
     }
 
     @Deprecated(
-        "Use a LcpPublicationRetriever instead.",
-        ReplaceWith("publicationRetriever()"),
-        level = DeprecationLevel.ERROR
+        "Use `acquirePublication()` with coroutines instead",
+        ReplaceWith("acquirePublication(lcpl)")
     )
     @DelicateCoroutinesApi
     public fun importPublication(
         lcpl: ByteArray,
         authentication: LcpAuthenticating?,
-        completion: (AcquiredPublication?, LcpException?) -> Unit
+        completion: (AcquiredPublication?, LcpError?) -> Unit
     ) {
         throw NotImplementedError()
     }
@@ -231,7 +245,7 @@ public interface LcpService {
     public fun retrieveLicense(
         publication: String,
         authentication: LcpAuthenticating?,
-        completion: (LcpLicense?, LcpException?) -> Unit
+        completion: (LcpLicense?, LcpError?) -> Unit
     ) {
         throw NotImplementedError()
     }

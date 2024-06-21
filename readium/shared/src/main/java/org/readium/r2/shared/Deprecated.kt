@@ -8,9 +8,11 @@
  */
 
 @file:Suppress("RemoveRedundantQualifierName")
+@file:OptIn(InternalReadiumApi::class)
 
 package org.readium.r2.shared
 
+import android.content.Context
 import java.net.URL
 import org.json.JSONObject
 import org.readium.r2.shared.extensions.removeLastComponent
@@ -197,4 +199,18 @@ public fun URL.removeLastComponent(): URL = removeLastComponent()
 )
 public fun normalize(base: String, href: String?): String {
     throw NotImplementedError()
+}
+
+@Deprecated(
+    "Readium does not provide user error messages anymore. You need to map error cases to your own custom messages.",
+    level = DeprecationLevel.ERROR
+)
+public class UserException : Exception() {
+
+    @Deprecated(
+        "Readium does not provide user error messages anymore. You need to map error cases to your own custom messages.",
+        level = DeprecationLevel.ERROR
+    )
+    @Suppress("UNUSED_PARAMETER")
+    public fun getUserMessage(context: Context): String = throw NotImplementedError()
 }

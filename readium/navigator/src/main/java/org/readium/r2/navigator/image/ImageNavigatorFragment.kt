@@ -4,10 +4,10 @@
  * available in the top-level LICENSE file of the project.
  */
 
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.r2.navigator.image
 
-import android.content.Context
-import android.content.SharedPreferences
 import android.graphics.PointF
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -21,10 +21,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.runBlocking
 import org.readium.r2.navigator.NavigatorFragment
-import org.readium.r2.navigator.OverflowNavigator
-import org.readium.r2.navigator.SimplePresentation
+import org.readium.r2.navigator.OverflowableNavigator
+import org.readium.r2.navigator.RestorationNotSupportedException
+import org.readium.r2.navigator.SimpleOverflow
 import org.readium.r2.navigator.VisualNavigator
 import org.readium.r2.navigator.databinding.ReadiumNavigatorViewpagerBinding
+import org.readium.r2.navigator.dummyPublication
 import org.readium.r2.navigator.extensions.layoutDirectionIsRTL
 import org.readium.r2.navigator.extensions.normalizeLocator
 import org.readium.r2.navigator.input.CompositeInputListener
@@ -39,12 +41,15 @@ import org.readium.r2.navigator.preferences.ReadingProgression
 import org.readium.r2.navigator.util.createFragmentFactory
 import org.readium.r2.shared.DelicateReadiumApi
 import org.readium.r2.shared.ExperimentalReadiumApi
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.ReadingProgression as PublicationReadingProgression
 import org.readium.r2.shared.publication.indexOfFirstWithHref
 import org.readium.r2.shared.publication.services.positions
+import org.readium.r2.shared.util.Url
+import org.readium.r2.shared.util.mediatype.MediaType
 
 /**
  * Navigator for bitmap-based publications, such as CBZ.
@@ -54,14 +59,12 @@ public class ImageNavigatorFragment private constructor(
     publication: Publication,
     private val initialLocator: Locator? = null,
     internal val listener: Listener? = null
-) : NavigatorFragment(publication), OverflowNavigator {
+) : NavigatorFragment(publication), OverflowableNavigator {
 
     public interface Listener : VisualNavigator.Listener
 
     internal lateinit var positions: List<Locator>
     internal lateinit var resourcePager: R2ViewPager
-
-    internal lateinit var preferences: SharedPreferences
 
     internal lateinit var adapter: R2PagerAdapter
     private lateinit var currentActivity: FragmentActivity
@@ -98,10 +101,6 @@ public class ImageNavigatorFragment private constructor(
         _binding = ReadiumNavigatorViewpagerBinding.inflate(inflater, container, false)
         val view = binding.root
 
-        preferences = requireContext().getSharedPreferences(
-            "org.readium.r2.settings",
-            Context.MODE_PRIVATE
-        )
         resourcePager = binding.resourcePager
         resourcePager.publicationType = R2ViewPager.PublicationType.CBZ
 
@@ -146,6 +145,14 @@ public class ImageNavigatorFragment private constructor(
         notifyCurrentLocation()
     }
 
+    override fun onResume() {
+        super.onResume()
+
+        if (publication == dummyPublication) {
+            throw RestorationNotSupportedException
+        }
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
@@ -172,14 +179,14 @@ public class ImageNavigatorFragment private constructor(
     }
 
     private fun notifyCurrentLocation() {
-        val locator = positions[resourcePager.currentItem]
-        if (locator == _currentLocator.value) {
-            return
-        }
+        val locator = positions.getOrNull(resourcePager.currentItem)
+            ?.takeUnless { it == _currentLocator.value }
+            ?: return
+
         _currentLocator.value = locator
     }
 
-    override fun go(locator: Locator, animated: Boolean, completion: () -> Unit): Boolean {
+    override fun go(locator: Locator, animated: Boolean): Boolean {
         @Suppress("NAME_SHADOWING")
         val locator = publication.normalizeLocator(locator)
 
@@ -193,12 +200,12 @@ public class ImageNavigatorFragment private constructor(
         return true
     }
 
-    override fun go(link: Link, animated: Boolean, completion: () -> Unit): Boolean {
+    override fun go(link: Link, animated: Boolean): Boolean {
         val locator = publication.locatorFromLink(link) ?: return false
-        return go(locator, animated, completion)
+        return go(locator, animated)
     }
 
-    override fun goForward(animated: Boolean, completion: () -> Unit): Boolean {
+    override fun goForward(animated: Boolean): Boolean {
         val current = resourcePager.currentItem
         if (requireActivity().layoutDirectionIsRTL()) {
             // The view has RTL layout
@@ -212,7 +219,7 @@ public class ImageNavigatorFragment private constructor(
         return current != resourcePager.currentItem
     }
 
-    override fun goBackward(animated: Boolean, completion: () -> Unit): Boolean {
+    override fun goBackward(animated: Boolean): Boolean {
         val current = resourcePager.currentItem
         if (requireActivity().layoutDirectionIsRTL()) {
             // The view has RTL layout
@@ -233,17 +240,17 @@ public class ImageNavigatorFragment private constructor(
 
     @Suppress("DEPRECATION")
     @Deprecated(
-        "Use `presentation.value.readingProgression` instead",
-        replaceWith = ReplaceWith("presentation.value.readingProgression"),
+        "Use `overflow.value.readingProgression` instead",
+        replaceWith = ReplaceWith("overflow.value.readingProgression"),
         level = DeprecationLevel.ERROR
     )
     override val readingProgression: PublicationReadingProgression =
-        publication.metadata.effectiveReadingProgression
+        throw NotImplementedError()
 
     @ExperimentalReadiumApi
-    override val presentation: StateFlow<OverflowNavigator.Presentation> =
+    override val overflow: StateFlow<OverflowableNavigator.Overflow> =
         MutableStateFlow(
-            SimplePresentation(
+            SimpleOverflow(
                 readingProgression = when (publication.metadata.readingProgression) {
                     PublicationReadingProgression.RTL -> ReadingProgression.RTL
                     else -> ReadingProgression.LTR
@@ -279,5 +286,19 @@ public class ImageNavigatorFragment private constructor(
             listener: Listener? = null
         ): FragmentFactory =
             createFragmentFactory { ImageNavigatorFragment(publication, initialLocator, listener) }
+
+        /**
+         * Creates a factory for a dummy [ImageNavigatorFragment].
+         *
+         * Used when Android restore the [ImageNavigatorFragment] after the process was killed. You
+         * need to make sure the fragment is removed from the screen before `onResume` is called.
+         */
+        public fun createDummyFactory(): FragmentFactory = createFragmentFactory {
+            ImageNavigatorFragment(
+                publication = dummyPublication,
+                initialLocator = Locator(href = Url("#")!!, mediaType = MediaType.JPEG),
+                listener = null
+            )
+        }
     }
 }

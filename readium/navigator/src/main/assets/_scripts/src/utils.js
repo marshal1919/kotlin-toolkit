@@ -19,8 +19,10 @@ window.addEventListener(
   "load",
   function () {
     const observer = new ResizeObserver(() => {
-      onViewportWidthChanged();
-      snapCurrentOffset();
+      requestAnimationFrame(() => {
+        onViewportWidthChanged();
+        snapCurrentOffset();
+      });
     });
     observer.observe(document.body);
   },
@@ -127,15 +129,14 @@ export function scrollToPosition(position) {
 
 // Scrolls to the first occurrence of the given text snippet.
 //
-// The expected text argument is a Locator Text object, as defined here:
+// The expected text argument is a Locator object, as defined here:
 // https://readium.org/architecture/models/locators/
-export function scrollToText(text) {
-  let range = rangeFromLocator({ text });
+export function scrollToLocator(locator) {
+  let range = rangeFromLocator(locator);
   if (!range) {
     return false;
   }
-  scrollToRange(range);
-  return true;
+  return scrollToRange(range);
 }
 
 function scrollToRange(range) {
@@ -144,8 +145,7 @@ function scrollToRange(range) {
 
 function scrollToRect(rect) {
   if (isScrollModeEnabled()) {
-    document.scrollingElement.scrollTop =
-      rect.top + window.scrollY - window.innerHeight / 2;
+    document.scrollingElement.scrollTop = rect.top + window.scrollY;
   } else {
     document.scrollingElement.scrollLeft = snapOffset(
       rect.left + window.scrollX

@@ -17,6 +17,18 @@ import org.readium.r2.shared.util.AbsoluteUrl
 public interface HyperlinkNavigator : Navigator {
 
     @ExperimentalReadiumApi
+    public sealed interface LinkContext
+
+    /**
+     * @param noteContent Content of the footnote. Look at the [Link.mediaType] for the format
+     * of the footnote (e.g. HTML).
+     */
+    @ExperimentalReadiumApi
+    public data class FootnoteContext(
+        public val noteContent: String
+    ) : LinkContext
+
+    @ExperimentalReadiumApi
     public interface Listener : Navigator.Listener {
 
         /**
@@ -26,13 +38,33 @@ public interface HyperlinkNavigator : Navigator {
          * or other operations.
          *
          * By returning false the navigator wont try to open the link itself and it is up
-         * to the calling app to decide how to display the link.
+         * to the calling app to decide how to display the resource.
          */
         @ExperimentalReadiumApi
-        public fun shouldFollowInternalLink(link: Link): Boolean { return true }
+        public fun shouldFollowInternalLink(link: Link, context: LinkContext?): Boolean { return true }
 
         /**
          * Called when a link to an external URL was activated in the navigator.
+         *
+         * If it is an HTTP URL, you should open it with a `CustomTabsIntent` or `WebView`, for
+         * example:
+         *
+         * ```kotlin
+         * override fun onExternalLinkActivated(url: AbsoluteUrl) {
+         *     if (!url.isHttp) return
+         *
+         *     val context = requireActivity()
+         *     val uri = url.toUri()
+         *
+         *     try {
+         *         CustomTabsIntent.Builder()
+         *             .build()
+         *             .launchUrl(context, uri)
+         *     } catch (e: ActivityNotFoundException) {
+         *         context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+         *     }
+         * }
+         * ```
          */
         @ExperimentalReadiumApi
         public fun onExternalLinkActivated(url: AbsoluteUrl)

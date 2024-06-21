@@ -4,13 +4,15 @@
  * available in the top-level LICENSE file of the project.
  */
 
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.r2.streamer.parser.epub
 
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.publication.ReadingProgression
 import org.readium.r2.shared.util.Url
-import org.readium.r2.shared.util.mediatype.MediaTypeRetriever
+import org.readium.r2.shared.util.fromEpubHref
 import org.readium.r2.shared.util.xml.ElementNode
-import org.readium.r2.streamer.parser.epub.extensions.fromEpubHref
 
 internal data class PackageDocument(
     val path: Url,
@@ -22,11 +24,11 @@ internal data class PackageDocument(
 ) {
 
     companion object {
-        fun parse(document: ElementNode, filePath: Url, mediaTypeRetriever: MediaTypeRetriever): PackageDocument? {
+        fun parse(document: ElementNode, filePath: Url): PackageDocument? {
             val packagePrefixes = document.getAttr("prefix")?.let { parsePrefixes(it) }.orEmpty()
             val prefixMap = PACKAGE_RESERVED_PREFIXES + packagePrefixes // prefix element overrides reserved prefixes
             val epubVersion = document.getAttr("version")?.toDoubleOrNull() ?: 1.2
-            val metadata = MetadataParser(prefixMap, mediaTypeRetriever).parse(document, filePath)
+            val metadata = MetadataParser(prefixMap).parse(document, filePath)
                 ?: return null
             val manifestElement = document.getFirst("manifest", Namespaces.OPF)
                 ?: return null
@@ -115,7 +117,7 @@ internal data class Itemref(
             val notLinear = element.getAttr("linear") == "no"
             val propAttr = element.getAttr("properties").orEmpty()
             val properties = parseProperties(propAttr)
-                .mapNotNull { resolveProperty(it, prefixMap, DEFAULT_VOCAB.ITEMREF) }
+                .map { resolveProperty(it, prefixMap, DEFAULT_VOCAB.ITEMREF) }
             return Itemref(idref, !notLinear, properties)
         }
     }

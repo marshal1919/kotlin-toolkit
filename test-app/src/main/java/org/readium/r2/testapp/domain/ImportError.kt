@@ -6,55 +6,60 @@
 
 package org.readium.r2.testapp.domain
 
-import androidx.annotation.StringRes
-import org.readium.r2.shared.UserException
-import org.readium.r2.shared.publication.Publication
-import org.readium.r2.shared.util.downloads.DownloadManager
+import org.readium.r2.lcp.LcpError
+import org.readium.r2.shared.util.DebugError
+import org.readium.r2.shared.util.Error
+import org.readium.r2.shared.util.file.FileSystemError
+import org.readium.r2.shared.util.http.HttpError
 import org.readium.r2.testapp.R
+import org.readium.r2.testapp.utils.UserError
 
 sealed class ImportError(
-    content: Content,
-    cause: Exception?
-) : UserException(content, cause) {
+    override val cause: Error?
+) : Error {
 
-    constructor(@StringRes userMessageId: Int) :
-        this(Content(userMessageId), null)
+    override val message: String =
+        "Import failed"
 
-    constructor(cause: UserException) :
-        this(Content(cause), cause)
+    object MissingLcpSupport :
+        ImportError(DebugError("Lcp support is missing."))
 
     class LcpAcquisitionFailed(
-        override val cause: UserException
+        override val cause: LcpError
     ) : ImportError(cause)
 
-    class PublicationError(
-        override val cause: UserException
-    ) : ImportError(cause) {
+    class Publication(
+        override val cause: PublicationError
+    ) : ImportError(cause)
 
-        companion object {
+    class FileSystem(
+        override val cause: FileSystemError
+    ) : ImportError(cause)
 
-            operator fun invoke(
-                error: Publication.OpenError
-            ): ImportError = PublicationError(
-                org.readium.r2.testapp.domain.PublicationError(
-                    error
-                )
-            )
-        }
+    class Download(
+        override val cause: HttpError
+    ) : ImportError(cause)
+
+    class Opds(override val cause: Error) :
+        ImportError(cause)
+
+    class Database(override val cause: Error) :
+        ImportError(cause)
+
+    class InconsistentState(override val cause: DebugError) :
+        ImportError(cause)
+
+    fun toUserError(): UserError = when (this) {
+        is MissingLcpSupport -> UserError(R.string.missing_lcp_support, cause = this)
+        is Database -> UserError(R.string.import_publication_unable_add_pub_database, cause = this)
+        is Download -> UserError(R.string.import_publication_download_failed, cause = this)
+        is LcpAcquisitionFailed -> cause.toUserError()
+        is Opds -> UserError(R.string.import_publication_no_acquisition, cause = this)
+        is Publication -> cause.toUserError()
+        is FileSystem -> cause.toUserError()
+        is InconsistentState -> UserError(
+            R.string.import_publication_inconsistent_state,
+            cause = this
+        )
     }
-
-    class StorageError(
-        override val cause: Throwable
-    ) : ImportError(R.string.import_publication_unexpected_io_exception)
-
-    class DownloadFailed(
-        val error: DownloadManager.Error
-    ) : ImportError(R.string.import_publication_download_failed)
-
-    class OpdsError(
-        override val cause: Throwable
-    ) : ImportError(R.string.import_publication_no_acquisition)
-
-    class DatabaseError :
-        ImportError(R.string.import_publication_unable_add_pub_database)
 }

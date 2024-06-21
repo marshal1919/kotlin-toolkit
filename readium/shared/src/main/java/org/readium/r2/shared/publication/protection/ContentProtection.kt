@@ -9,15 +9,14 @@
 
 package org.readium.r2.shared.publication.protection
 
-import androidx.annotation.StringRes
-import org.readium.r2.shared.R
-import org.readium.r2.shared.UserException
 import org.readium.r2.shared.publication.LocalizedString
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.services.ContentProtectionService
+import org.readium.r2.shared.util.Error
 import org.readium.r2.shared.util.Try
-import org.readium.r2.shared.util.mediatype.MediaType
-import org.readium.r2.shared.util.resource.Container
+import org.readium.r2.shared.util.asset.Asset
+import org.readium.r2.shared.util.data.Container
+import org.readium.r2.shared.util.data.ReadError
 
 /**
  * Bridge between a Content Protection technology and the Readium toolkit.
@@ -28,41 +27,44 @@ import org.readium.r2.shared.util.resource.Container
  */
 public interface ContentProtection {
 
-    public val scheme: Scheme
+    public sealed class OpenError(
+        override val message: String,
+        override val cause: Error?
+    ) : Error {
 
-    /**
-     * Returns if this [ContentProtection] supports the given [asset].
-     */
-    public suspend fun supports(
-        asset: org.readium.r2.shared.util.asset.Asset
-    ): Boolean
+        public class Reading(
+            override val cause: ReadError
+        ) : OpenError("An error occurred while trying to read asset.", cause)
 
-    /**
-     * Attempts to unlock a potentially protected publication asset.
-     *
-     * @return A [Asset] in case of success or a [Publication.OpenError] if the
-     * asset can't be successfully opened even in restricted mode.
-     */
-    public suspend fun open(
-        asset: org.readium.r2.shared.util.asset.Asset,
-        credentials: String?,
-        allowUserInteraction: Boolean
-    ): Try<Asset, Publication.OpenError>
+        public class AssetNotSupported(
+            override val cause: Error? = null
+        ) : OpenError("Asset is not supported.", cause)
+    }
 
     /**
      * Holds the result of opening an [Asset] with a [ContentProtection].
      *
-     * @property mediaType Media type of the asset
-     * @property container Container to access the publication through
+     * @property asset Asset pointing to a publication.
      * @property onCreatePublication Called on every parsed Publication.Builder
      * It can be used to modify the `Manifest`, the root [Container] or the list of service
      * factories of a [Publication].
      */
-    public data class Asset(
-        val mediaType: MediaType,
-        val container: Container,
+    public data class OpenResult(
+        val asset: Asset,
         val onCreatePublication: Publication.Builder.() -> Unit = {}
     )
+
+    /**
+     * Attempts to unlock a potentially protected publication asset.
+     *
+     * @return A [Asset] in case of success or an [OpenError] if the
+     * asset can't be successfully opened even in restricted mode.
+     */
+    public suspend fun open(
+        asset: Asset,
+        credentials: String?,
+        allowUserInteraction: Boolean
+    ): Try<OpenResult, OpenError>
 
     /**
      * Represents a specific Content Protection technology, uniquely identified with an [uri].
@@ -82,31 +84,5 @@ public interface ContentProtection {
             /** Adobe ADEPT DRM scheme. */
             public val Adept: Scheme = Scheme(uri = "http://ns.adobe.com/adept")
         }
-    }
-
-    public sealed class Exception(
-        userMessageId: Int,
-        vararg args: Any?,
-        quantity: Int? = null,
-        cause: Throwable? = null
-    ) : UserException(userMessageId, quantity, *args, cause = cause) {
-        protected constructor(
-            @StringRes userMessageId: Int,
-            vararg args: Any?,
-            cause: Throwable? = null
-        ) : this(userMessageId, *args, quantity = null, cause = cause)
-
-        /**
-         * Exception returned when the given Content Protection [scheme] is not supported by the
-         * app.
-         */
-        public class SchemeNotSupported(public val scheme: Scheme? = null, name: String?) : Exception(
-            if (name == null) {
-                R.string.readium_shared_publication_content_protection_exception_not_supported_unknown
-            } else {
-                R.string.readium_shared_publication_content_protection_exception_not_supported
-            },
-            name
-        )
     }
 }

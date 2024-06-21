@@ -9,9 +9,12 @@ package org.readium.r2.testapp.drm
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import java.util.*
+import java.util.Date
+import org.readium.r2.lcp.LcpError
 import org.readium.r2.lcp.LcpLicense
 import org.readium.r2.shared.util.Try
+import org.readium.r2.testapp.domain.toUserError
+import org.readium.r2.testapp.utils.UserError
 
 class LcpManagementViewModel(
     private val lcpLicense: LcpLicense,
@@ -31,6 +34,14 @@ class LcpManagementViewModel(
                 .newInstance(lcpLicense, renewListener)
     }
 
+    class LcpDrmError(
+        override val error: LcpError
+    ) : DrmError {
+
+        override fun toUserError(): UserError =
+            error.toUserError()
+    }
+
     override val type: String = "LCP"
 
     override val state: String?
@@ -40,16 +51,16 @@ class LcpManagementViewModel(
         get() = lcpLicense.license.provider
 
     override val issued: Date
-        get() = lcpLicense.license.issued
+        get() = lcpLicense.license.issued.toJavaDate()
 
     override val updated: Date
-        get() = lcpLicense.license.updated
+        get() = lcpLicense.license.updated.toJavaDate()
 
     override val start: Date?
-        get() = lcpLicense.license.rights.start
+        get() = lcpLicense.license.rights.start?.toJavaDate()
 
     override val end: Date?
-        get() = lcpLicense.license.rights.end
+        get() = lcpLicense.license.rights.end?.toJavaDate()
 
     override val copiesLeft: String =
         lcpLicense.charactersToCopyLeft.value
@@ -64,13 +75,16 @@ class LcpManagementViewModel(
     override val canRenewLoan: Boolean
         get() = lcpLicense.canRenewLoan
 
-    override suspend fun renewLoan(fragment: Fragment): Try<Date?, Exception> {
+    override suspend fun renewLoan(fragment: Fragment): Try<Date?, LcpDrmError> {
         return lcpLicense.renewLoan(renewListener)
+            .map { it?.toJavaDate() }
+            .mapFailure { LcpDrmError(it) }
     }
 
     override val canReturnPublication: Boolean
         get() = lcpLicense.canReturnPublication
 
-    override suspend fun returnPublication(): Try<Unit, Exception> =
+    override suspend fun returnPublication(): Try<Unit, LcpDrmError> =
         lcpLicense.returnPublication()
+            .mapFailure { LcpDrmError(it) }
 }

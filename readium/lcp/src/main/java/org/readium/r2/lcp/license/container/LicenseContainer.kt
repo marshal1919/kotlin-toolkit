@@ -11,12 +11,16 @@ package org.readium.r2.lcp.license.container
 
 import android.content.Context
 import java.io.File
+import org.readium.r2.lcp.LcpError
 import org.readium.r2.lcp.LcpException
 import org.readium.r2.lcp.license.model.LicenseDocument
 import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.asset.Asset
-import org.readium.r2.shared.util.mediatype.MediaType
-import org.readium.r2.shared.util.resource.Container
+import org.readium.r2.shared.util.asset.ContainerAsset
+import org.readium.r2.shared.util.asset.ResourceAsset
+import org.readium.r2.shared.util.data.Container
+import org.readium.r2.shared.util.format.FormatSpecification
+import org.readium.r2.shared.util.format.Specification
 import org.readium.r2.shared.util.resource.Resource
 
 private val LICENSE_IN_EPUB = Url("META-INF/license.lcpl")!!
@@ -36,11 +40,14 @@ internal interface WritableLicenseContainer : LicenseContainer {
 
 internal fun createLicenseContainer(
     file: File,
-    mediaType: MediaType
+    formatSpecification: FormatSpecification
 ): WritableLicenseContainer =
-    when (mediaType) {
-        MediaType.EPUB -> FileZipLicenseContainer(file.path, LICENSE_IN_EPUB)
-        MediaType.LCP_LICENSE_DOCUMENT -> LcplLicenseContainer(file)
+    when {
+        formatSpecification.conformsTo(Specification.Epub) -> FileZipLicenseContainer(
+            file.path,
+            LICENSE_IN_EPUB
+        )
+        formatSpecification.conformsTo(Specification.LcpLicense) -> LcplLicenseContainer(file)
         // Assuming it's a Readium WebPub package (e.g. audiobook, LCPDF, etc.) as a fallback
         else -> FileZipLicenseContainer(file.path, LICENSE_IN_RPF)
     }
@@ -50,21 +57,25 @@ internal fun createLicenseContainer(
     asset: Asset
 ): LicenseContainer =
     when (asset) {
-        is Asset.Resource -> createLicenseContainer(asset.resource, asset.mediaType)
-        is Asset.Container -> createLicenseContainer(context, asset.container, asset.mediaType)
+        is ResourceAsset -> createLicenseContainer(asset.resource, asset.format.specification)
+        is ContainerAsset -> createLicenseContainer(
+            context,
+            asset.container,
+            asset.format.specification
+        )
     }
 
 internal fun createLicenseContainer(
     resource: Resource,
-    mediaType: MediaType
+    formatSpecification: FormatSpecification
 ): LicenseContainer {
-    if (mediaType != MediaType.LCP_LICENSE_DOCUMENT) {
-        throw LcpException.Container.OpenFailed
+    if (!formatSpecification.conformsTo(Specification.LcpLicense)) {
+        throw LcpException(LcpError.Container.OpenFailed)
     }
 
     return when {
-        resource.source?.isFile == true ->
-            LcplLicenseContainer(resource.source!!.toFile()!!)
+        resource.sourceUrl?.isFile == true ->
+            LcplLicenseContainer(resource.sourceUrl!!.toFile()!!)
         else ->
             LcplResourceLicenseContainer(resource)
     }
@@ -72,19 +83,19 @@ internal fun createLicenseContainer(
 
 internal fun createLicenseContainer(
     context: Context,
-    container: Container,
-    mediaType: MediaType
+    container: Container<Resource>,
+    formatSpecification: FormatSpecification
 ): LicenseContainer {
-    val licensePath = when (mediaType) {
-        MediaType.EPUB -> LICENSE_IN_EPUB
+    val licensePath = when {
+        formatSpecification.conformsTo(Specification.Epub) -> LICENSE_IN_EPUB
         // Assuming it's a Readium WebPub package (e.g. audiobook, LCPDF, etc.) as a fallback
         else -> LICENSE_IN_RPF
     }
 
     return when {
-        container.source?.isFile == true ->
-            FileZipLicenseContainer(container.source!!.path!!, licensePath)
-        container.source?.isContent == true ->
+        container.sourceUrl?.isFile == true ->
+            FileZipLicenseContainer(container.sourceUrl!!.path!!, licensePath)
+        container.sourceUrl?.isContent == true ->
             ContentZipLicenseContainer(context, container, licensePath)
         else ->
             ContainerLicenseContainer(container, licensePath)

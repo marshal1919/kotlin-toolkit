@@ -4,6 +4,8 @@
  * available in the top-level LICENSE file of the project.
  */
 
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.adapter.pdfium.navigator
 
 import android.graphics.PointF
@@ -23,11 +25,16 @@ import org.readium.r2.navigator.preferences.Axis
 import org.readium.r2.navigator.preferences.Fit
 import org.readium.r2.navigator.preferences.ReadingProgression
 import org.readium.r2.shared.ExperimentalReadiumApi
+import org.readium.r2.shared.InternalReadiumApi
+import org.readium.r2.shared.publication.LocalizedString
+import org.readium.r2.shared.publication.Manifest
+import org.readium.r2.shared.publication.Metadata
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.SingleJob
 import org.readium.r2.shared.util.Url
+import org.readium.r2.shared.util.data.ReadError
 import org.readium.r2.shared.util.getOrElse
-import org.readium.r2.shared.util.resource.Resource
+import org.readium.r2.shared.util.toDebugDescription
 import timber.log.Timber
 
 @ExperimentalReadiumApi
@@ -39,8 +46,29 @@ public class PdfiumDocumentFragment internal constructor(
     private val listener: Listener?
 ) : PdfDocumentFragment<PdfiumSettings>() {
 
+    // Dummy constructor to address https://github.com/readium/kotlin-toolkit/issues/395
+    public constructor() : this(
+        publication = Publication(
+            manifest = Manifest(
+                metadata = Metadata(
+                    identifier = "readium:dummy",
+                    localizedTitle = LocalizedString("")
+                )
+            )
+        ),
+        href = Url("publication.pdf")!!,
+        initialPageIndex = 0,
+        initialSettings = PdfiumSettings(
+            fit = Fit.WIDTH,
+            pageSpacing = 0.0,
+            readingProgression = ReadingProgression.LTR,
+            scrollAxis = Axis.VERTICAL
+        ),
+        listener = null
+    )
+
     internal interface Listener {
-        fun onResourceLoadFailed(href: Url, error: Resource.Exception)
+        fun onResourceLoadFailed(href: Url, error: ReadError)
         fun onConfigurePdfView(configurator: PDFView.Configurator)
         fun onTap(point: PointF): Boolean
     }
@@ -69,12 +97,13 @@ public class PdfiumDocumentFragment internal constructor(
         val context = context?.applicationContext ?: return
 
         resetJob.launch {
+            val resource = requireNotNull(publication.get(href))
             val document = PdfiumDocumentFactory(context)
                 // PDFium crashes when reusing the same PdfDocument, so we must not cache it.
 //                    .cachedIn(publication)
-                .open(publication.get(href), null)
+                .open(resource, null)
                 .getOrElse { error ->
-                    Timber.e(error)
+                    Timber.e(error.toDebugDescription())
                     listener?.onResourceLoadFailed(href, error)
                     return@launch
                 }

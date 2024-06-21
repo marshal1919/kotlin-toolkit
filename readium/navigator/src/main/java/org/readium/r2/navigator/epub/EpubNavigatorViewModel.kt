@@ -4,7 +4,7 @@
  * available in the top-level LICENSE file of the project.
  */
 
-@file:OptIn(ExperimentalReadiumApi::class)
+@file:OptIn(ExperimentalReadiumApi::class, InternalReadiumApi::class)
 
 package org.readium.r2.navigator.epub
 
@@ -28,6 +28,7 @@ import org.readium.r2.navigator.preferences.*
 import org.readium.r2.navigator.util.createViewModelFactory
 import org.readium.r2.shared.DelicateReadiumApi
 import org.readium.r2.shared.ExperimentalReadiumApi
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.extensions.mapStateIn
 import org.readium.r2.shared.publication.Href
 import org.readium.r2.shared.publication.Link
@@ -41,7 +42,7 @@ internal enum class DualPage {
     AUTO, OFF, ON
 }
 
-@OptIn(ExperimentalReadiumApi::class, ExperimentalDecorator::class, DelicateReadiumApi::class)
+@OptIn(ExperimentalReadiumApi::class, DelicateReadiumApi::class)
 internal class EpubNavigatorViewModel(
     application: Application,
     val publication: Publication,
@@ -85,9 +86,9 @@ internal class EpubNavigatorViewModel(
 
     val settings: StateFlow<EpubSettings> = _settings.asStateFlow()
 
-    val presentation: StateFlow<OverflowNavigator.Presentation> = _settings
+    val overflow: StateFlow<OverflowableNavigator.Overflow> = _settings
         .mapStateIn(viewModelScope) { settings ->
-            SimplePresentation(
+            SimpleOverflow(
                 readingProgression = settings.readingProgression,
                 scroll = settings.scroll,
                 axis = if (settings.scroll && !settings.verticalText) {
@@ -140,20 +141,18 @@ internal class EpubNavigatorViewModel(
             .launchIn(viewModelScope)
     }
 
-    fun onResourceLoaded(link: Link?, webView: R2BasicWebView): RunScriptCommand {
+    fun onResourceLoaded(webView: R2BasicWebView, link: Link): RunScriptCommand {
         val templates = decorationTemplates.toJSON().toString()
             .replace("\\n", " ")
         var script = "readium.registerDecorationTemplates($templates);\n"
 
-        if (link != null) {
-            for ((group, decorations) in decorations) {
-                val changes = decorations
-                    .filter { it.locator.href == link.url() }
-                    .map { DecorationChange.Added(it) }
+        for ((group, decorations) in decorations) {
+            val changes = decorations
+                .filter { it.locator.href == link.url() }
+                .map { DecorationChange.Added(it) }
 
-                val groupScript = changes.javascriptForGroup(group, decorationTemplates) ?: continue
-                script += "$groupScript\n"
-            }
+            val groupScript = changes.javascriptForGroup(group, decorationTemplates) ?: continue
+            script += "$groupScript\n"
         }
 
         return RunScriptCommand(script, scope = RunScriptCommand.Scope.WebView(webView))
@@ -177,12 +176,17 @@ internal class EpubNavigatorViewModel(
     fun navigateToUrl(url: AbsoluteUrl) = viewModelScope.launch {
         val link = internalLinkFromUrl(url)
         if (link != null) {
-            if (listener == null || listener.shouldFollowInternalLink(link)) {
+            if (listener == null || listener.shouldFollowInternalLink(link, null)) {
                 _events.send(Event.OpenInternalLink(link))
             }
         } else {
             listener?.onExternalLinkActivated(url)
         }
+    }
+
+    fun shouldFollowFootnoteLink(url: AbsoluteUrl, context: HyperlinkNavigator.FootnoteContext): Boolean {
+        val link = internalLinkFromUrl(url) ?: return true
+        return listener?.shouldFollowInternalLink(link, context) ?: true
     }
 
     /**
@@ -357,7 +361,10 @@ internal class EpubNavigatorViewModel(
                     application,
                     publication,
                     servedAssets = config.servedAssets,
-                    disableSelectionWhenProtected = config.disableSelectionWhenProtected
+                    disableSelectionWhenProtected = config.disableSelectionWhenProtected,
+                    onResourceLoadFailed = { url, error ->
+                        listener?.onResourceLoadFailed(url, error)
+                    }
                 )
             )
         }

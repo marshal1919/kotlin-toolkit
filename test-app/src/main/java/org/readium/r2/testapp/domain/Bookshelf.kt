@@ -13,17 +13,17 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import org.readium.r2.shared.publication.Publication
-import org.readium.r2.shared.publication.protection.ContentProtectionSchemeRetriever
 import org.readium.r2.shared.util.AbsoluteUrl
+import org.readium.r2.shared.util.DebugError
 import org.readium.r2.shared.util.Try
-import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.asset.AssetRetriever
+import org.readium.r2.shared.util.file.FileSystemError
+import org.readium.r2.shared.util.format.Format
 import org.readium.r2.shared.util.getOrElse
 import org.readium.r2.shared.util.toUrl
-import org.readium.r2.streamer.PublicationFactory
+import org.readium.r2.streamer.PublicationOpener
 import org.readium.r2.testapp.data.BookRepository
 import org.readium.r2.testapp.data.model.Book
-import org.readium.r2.testapp.utils.extensions.formatPercentage
 import org.readium.r2.testapp.utils.tryOrLog
 import timber.log.Timber
 
@@ -36,20 +36,10 @@ import timber.log.Timber
 class Bookshelf(
     private val bookRepository: BookRepository,
     private val coverStorage: CoverStorage,
-    private val publicationFactory: PublicationFactory,
+    private val publicationOpener: PublicationOpener,
     private val assetRetriever: AssetRetriever,
-    private val protectionRetriever: ContentProtectionSchemeRetriever,
-    createPublicationRetriever: (PublicationRetriever.Listener) -> PublicationRetriever
-) {
-    val channel: Channel<Event> =
-        Channel(Channel.UNLIMITED)
-
     private val publicationRetriever: PublicationRetriever
-
-    init {
-        publicationRetriever = createPublicationRetriever(PublicationRetrieverListener())
-    }
-
+) {
     sealed class Event {
         data object ImportPublicationSuccess :
             Event()
@@ -59,42 +49,30 @@ class Bookshelf(
         ) : Event()
     }
 
+    val channel: Channel<Event> =
+        Channel(Channel.UNLIMITED)
+
     private val coroutineScope: CoroutineScope =
         MainScope()
-
-    private inner class PublicationRetrieverListener : PublicationRetriever.Listener {
-        override fun onSuccess(publication: File, coverUrl: AbsoluteUrl?) {
-            coroutineScope.launch {
-                val url = publication.toUrl()
-                addBookFeedback(url, coverUrl)
-            }
-        }
-
-        override fun onProgressed(progress: Double) {
-            Timber.e("Downloaded ${progress.formatPercentage()}")
-        }
-
-        override fun onError(error: ImportError) {
-            coroutineScope.launch {
-                channel.send(Event.ImportPublicationError(error))
-            }
-        }
-    }
 
     fun importPublicationFromStorage(
         uri: Uri
     ) {
-        publicationRetriever.retrieveFromStorage(uri)
+        coroutineScope.launch {
+            addBookFeedback(publicationRetriever.retrieveFromStorage(uri))
+        }
     }
 
     fun importPublicationFromOpds(
         publication: Publication
     ) {
-        publicationRetriever.retrieveFromOpds(publication)
+        coroutineScope.launch {
+            addBookFeedback(publicationRetriever.retrieveFromOpds(publication))
+        }
     }
 
     fun addPublicationFromWeb(
-        url: Url
+        url: AbsoluteUrl
     ) {
         coroutineScope.launch {
             addBookFeedback(url)
@@ -102,7 +80,7 @@ class Bookshelf(
     }
 
     fun addPublicationFromStorage(
-        url: Url
+        url: AbsoluteUrl
     ) {
         coroutineScope.launch {
             addBookFeedback(url)
@@ -110,55 +88,73 @@ class Bookshelf(
     }
 
     private suspend fun addBookFeedback(
-        url: Url,
+        retrieverResult: Try<PublicationRetriever.Result, ImportError>
+    ) {
+        retrieverResult
+            .map { addBook(it.publication.toUrl(), it.format, it.coverUrl) }
+            .onSuccess { channel.send(Event.ImportPublicationSuccess) }
+            .onFailure { channel.send(Event.ImportPublicationError(it)) }
+    }
+
+    private suspend fun addBookFeedback(
+        url: AbsoluteUrl,
+        format: Format? = null,
         coverUrl: AbsoluteUrl? = null
     ) {
-        addBook(url, coverUrl)
+        addBook(url, format, coverUrl)
             .onSuccess { channel.send(Event.ImportPublicationSuccess) }
             .onFailure { channel.send(Event.ImportPublicationError(it)) }
     }
 
     private suspend fun addBook(
-        url: Url,
+        url: AbsoluteUrl,
+        format: Format? = null,
         coverUrl: AbsoluteUrl? = null
     ): Try<Unit, ImportError> {
         val asset =
-            assetRetriever.retrieve(url)
-                ?: return Try.failure(
-                    ImportError.PublicationError(PublicationError.UnsupportedAsset())
+            if (format == null) {
+                assetRetriever.retrieve(url)
+            } else {
+                assetRetriever.retrieve(url, format)
+            }.getOrElse {
+                return Try.failure(
+                    ImportError.Publication(PublicationError(it))
                 )
+            }
 
-        val drmScheme =
-            protectionRetriever.retrieve(asset)
-
-        publicationFactory.open(
+        publicationOpener.open(
             asset,
-            contentProtectionScheme = drmScheme,
             allowUserInteraction = false
         ).onSuccess { publication ->
             val coverFile =
                 coverStorage.storeCover(publication, coverUrl)
                     .getOrElse {
-                        return Try.failure(ImportError.StorageError(it))
+                        return Try.failure(
+                            ImportError.FileSystem(
+                                FileSystemError.IO(it)
+                            )
+                        )
                     }
 
             val id = bookRepository.insertBook(
-                url.toString(),
-                asset.mediaType,
-                asset.assetType,
-                drmScheme,
+                url,
+                asset.format.mediaType,
                 publication,
                 coverFile
             )
             if (id == -1L) {
                 coverFile.delete()
-                return Try.failure(ImportError.DatabaseError())
+                return Try.failure(
+                    ImportError.Database(
+                        DebugError("Could not insert book into database.")
+                    )
+                )
             }
         }
             .onFailure {
                 Timber.e("Cannot open publication: $it.")
                 return Try.failure(
-                    ImportError.PublicationError(PublicationError(it))
+                    ImportError.Publication(PublicationError(it))
                 )
             }
 

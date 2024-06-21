@@ -7,6 +7,8 @@
  * LICENSE file present in the project repository where this source code is maintained.
  */
 
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.r2.shared.publication
 
 import android.os.Parcelable
@@ -14,6 +16,7 @@ import kotlinx.parcelize.Parcelize
 import kotlinx.parcelize.WriteWith
 import org.json.JSONArray
 import org.json.JSONObject
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.JSONable
 import org.readium.r2.shared.extensions.JSONParceler
 import org.readium.r2.shared.extensions.mapNotNull
@@ -21,7 +24,6 @@ import org.readium.r2.shared.extensions.putIfNotEmpty
 import org.readium.r2.shared.extensions.toMap
 import org.readium.r2.shared.util.logging.WarningLogger
 import org.readium.r2.shared.util.logging.log
-import org.readium.r2.shared.util.mediatype.MediaTypeRetriever
 
 /**
  * Core Collection Model
@@ -54,7 +56,6 @@ public data class PublicationCollection(
          */
         public fun fromJSON(
             json: Any?,
-            mediaTypeRetriever: MediaTypeRetriever = MediaTypeRetriever(),
             warnings: WarningLogger? = null
         ): PublicationCollection? {
             json ?: return null
@@ -68,20 +69,18 @@ public data class PublicationCollection(
                 is JSONObject -> {
                     links = Link.fromJSONArray(
                         json.remove("links") as? JSONArray,
-                        mediaTypeRetriever,
                         warnings
                     )
                     metadata = (json.remove("metadata") as? JSONObject)?.toMap()
                     subcollections = collectionsFromJSON(
                         json,
-                        mediaTypeRetriever,
                         warnings
                     )
                 }
 
                 // Parses an array of links.
                 is JSONArray -> {
-                    links = Link.fromJSONArray(json, mediaTypeRetriever, warnings)
+                    links = Link.fromJSONArray(json, warnings)
                 }
 
                 else -> {
@@ -112,7 +111,6 @@ public data class PublicationCollection(
          */
         public fun collectionsFromJSON(
             json: JSONObject,
-            mediaTypeRetriever: MediaTypeRetriever = MediaTypeRetriever(),
             warnings: WarningLogger? = null
         ): Map<String, List<PublicationCollection>> {
             val collections = mutableMapOf<String, MutableList<PublicationCollection>>()
@@ -120,7 +118,7 @@ public data class PublicationCollection(
                 val subJSON = json.get(role)
 
                 // Parses a list of links or a single collection object.
-                val collection = fromJSON(subJSON, mediaTypeRetriever, warnings)
+                val collection = fromJSON(subJSON, warnings)
                 if (collection != null) {
                     collections.getOrPut(role) { mutableListOf() }.add(collection)
 
@@ -130,7 +128,6 @@ public data class PublicationCollection(
                         subJSON.mapNotNull {
                             fromJSON(
                                 it,
-                                mediaTypeRetriever,
                                 warnings
                             )
                         }

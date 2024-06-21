@@ -7,20 +7,24 @@
  * LICENSE file present in the project repository where this source code is maintained.
  */
 
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.r2.lcp.license.model
 
 import java.nio.charset.Charset
 import java.util.*
 import org.json.JSONObject
+import org.readium.r2.lcp.LcpError
 import org.readium.r2.lcp.LcpException
 import org.readium.r2.lcp.license.model.components.Link
 import org.readium.r2.lcp.license.model.components.Links
 import org.readium.r2.lcp.license.model.components.lsd.Event
 import org.readium.r2.lcp.license.model.components.lsd.PotentialRights
 import org.readium.r2.lcp.service.URLParameters
-import org.readium.r2.shared.extensions.iso8601ToDate
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.extensions.mapNotNull
 import org.readium.r2.shared.extensions.optNullableString
+import org.readium.r2.shared.util.Instant
 import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.mediatype.MediaType
 
@@ -28,8 +32,8 @@ public class StatusDocument(public val data: ByteArray) {
     public val id: String
     public val status: Status
     public val message: String
-    public val licenseUpdated: Date
-    public val statusUpdated: Date
+    public val licenseUpdated: Instant
+    public val statusUpdated: Instant
     public val links: Links
     public val potentialRights: PotentialRights?
     public val events: List<Event>
@@ -48,7 +52,7 @@ public class StatusDocument(public val data: ByteArray) {
         public val rawValue: String get() = value
 
         public companion object {
-            public operator fun invoke(value: String): Status? = values().firstOrNull { it.value == value }
+            public operator fun invoke(value: String): Status? = entries.firstOrNull { it.value == value }
         }
     }
 
@@ -62,7 +66,7 @@ public class StatusDocument(public val data: ByteArray) {
         public val rawValue: String get() = value
 
         public companion object {
-            public operator fun invoke(value: String): Rel? = values().firstOrNull { it.value == value }
+            public operator fun invoke(value: String): Rel? = entries.firstOrNull { it.value == value }
         }
     }
 
@@ -70,18 +74,28 @@ public class StatusDocument(public val data: ByteArray) {
         try {
             json = JSONObject(data.toString(Charset.defaultCharset()))
         } catch (e: Exception) {
-            throw LcpException.Parsing.MalformedJSON
+            throw LcpException(LcpError.Parsing.MalformedJSON)
         }
 
-        id = json.optNullableString("id") ?: throw LcpException.Parsing.StatusDocument
-        status = json.optNullableString("status")?.let { Status(it) } ?: throw LcpException.Parsing.StatusDocument
-        message = json.optNullableString("message") ?: throw LcpException.Parsing.StatusDocument
+        id = json.optNullableString("id") ?: throw LcpException(LcpError.Parsing.StatusDocument)
+        status = json.optNullableString("status")?.let { Status(it) } ?: throw LcpException(
+            LcpError.Parsing.StatusDocument
+        )
+        message = json.optNullableString("message") ?: throw LcpException(
+            LcpError.Parsing.StatusDocument
+        )
 
         val updated = json.optJSONObject("updated") ?: JSONObject()
-        licenseUpdated = updated.optNullableString("license")?.iso8601ToDate() ?: throw LcpException.Parsing.StatusDocument
-        statusUpdated = updated.optNullableString("status")?.iso8601ToDate() ?: throw LcpException.Parsing.StatusDocument
+        licenseUpdated = updated.optNullableString("license")?.let { Instant.parse(it) } ?: throw LcpException(
+            LcpError.Parsing.StatusDocument
+        )
+        statusUpdated = updated.optNullableString("status")?.let { Instant.parse(it) } ?: throw LcpException(
+            LcpError.Parsing.StatusDocument
+        )
 
-        links = json.optJSONArray("links")?.let { Links(it) } ?: throw LcpException.Parsing.StatusDocument
+        links = json.optJSONArray("links")?.let { Links(it) } ?: throw LcpException(
+            LcpError.Parsing.StatusDocument
+        )
 
         potentialRights = json.optJSONObject("potential_rights")?.let { PotentialRights(it) }
 
@@ -108,7 +122,7 @@ public class StatusDocument(public val data: ByteArray) {
     ): Url {
         val link = link(rel, preferredType)
             ?: linkWithNoType(rel)
-            ?: throw LcpException.Parsing.Url(rel = rel.value)
+            ?: throw LcpException(LcpError.Parsing.Url(rel = rel.value))
 
         return link.url(parameters = parameters)
     }

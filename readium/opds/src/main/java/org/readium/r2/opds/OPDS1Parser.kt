@@ -7,14 +7,35 @@
  * LICENSE file present in the project repository where this source code is maintained.
  */
 
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.r2.opds
 
-import org.joda.time.DateTime
+import java.net.URL
+import org.readium.r2.shared.DelicateReadiumApi
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.extensions.toList
 import org.readium.r2.shared.extensions.toMap
-import org.readium.r2.shared.opds.*
-import org.readium.r2.shared.publication.*
+import org.readium.r2.shared.opds.Acquisition
+import org.readium.r2.shared.opds.Facet
+import org.readium.r2.shared.opds.Feed
+import org.readium.r2.shared.opds.Group
+import org.readium.r2.shared.opds.ParseData
+import org.readium.r2.shared.opds.Price
+import org.readium.r2.shared.publication.Contributor
+import org.readium.r2.shared.publication.Href
+import org.readium.r2.shared.publication.Link
+import org.readium.r2.shared.publication.LocalizedString
+import org.readium.r2.shared.publication.Manifest
+import org.readium.r2.shared.publication.Metadata
+import org.readium.r2.shared.publication.Properties
+import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.publication.PublicationCollection
+import org.readium.r2.shared.publication.Subject
 import org.readium.r2.shared.toJSON
+import org.readium.r2.shared.util.AbsoluteUrl
+import org.readium.r2.shared.util.ErrorException
+import org.readium.r2.shared.util.Instant
 import org.readium.r2.shared.util.Try
 import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.http.DefaultHttpClient
@@ -22,7 +43,6 @@ import org.readium.r2.shared.util.http.HttpClient
 import org.readium.r2.shared.util.http.HttpRequest
 import org.readium.r2.shared.util.http.fetchWithDecoder
 import org.readium.r2.shared.util.mediatype.MediaType
-import org.readium.r2.shared.util.mediatype.MediaTypeRetriever
 import org.readium.r2.shared.util.xml.ElementNode
 import org.readium.r2.shared.util.xml.XmlParser
 
@@ -49,18 +69,19 @@ public class OPDS1Parser {
 
         public suspend fun parseUrlString(
             url: String,
-            client: HttpClient = DefaultHttpClient(MediaTypeRetriever())
+            client: HttpClient = DefaultHttpClient()
         ): Try<ParseData, Exception> =
-            parseRequest(HttpRequest(url), client)
+            AbsoluteUrl(url)
+                ?.let { parseRequest(HttpRequest(it), client) }
+                ?: run { Try.failure(Exception("Not an absolute URL.")) }
 
         public suspend fun parseRequest(
             request: HttpRequest,
-            client: HttpClient = DefaultHttpClient(MediaTypeRetriever())
+            client: HttpClient = DefaultHttpClient()
         ): Try<ParseData, Exception> {
             return client.fetchWithDecoder(request) {
-                val url = Url(request.url) ?: throw Exception("Invalid URL")
-                this.parse(it.body, url)
-            }
+                this.parse(it.body, request.url)
+            }.mapFailure { ErrorException(it) }
         }
 
         public fun parse(xmlData: ByteArray, url: Url): ParseData {
@@ -72,12 +93,22 @@ public class OPDS1Parser {
             }
         }
 
+        @Suppress("UNUSED_PARAMETER")
+        @Deprecated(
+            "Provide an instance of `Url` instead",
+            ReplaceWith("parse(jsonData, url.toUrl()!!)"),
+            DeprecationLevel.ERROR
+        )
+        public fun parse(xmlData: ByteArray, url: URL): ParseData =
+            throw NotImplementedError()
+
+        @OptIn(DelicateReadiumApi::class)
         private fun parseFeed(root: ElementNode, url: Url): Feed {
             val feedTitle = root.getFirst("title", Namespaces.Atom)?.text
                 ?: throw Exception(OPDSParserError.MissingTitle.name)
             val feed = Feed.Builder(feedTitle, 1, url)
             val tmpDate = root.getFirst("updated", Namespaces.Atom)?.text
-            feed.metadata.modified = tmpDate?.let { DateTime(it).toDate() }
+            feed.metadata.modified = tmpDate?.let { Instant.parse(it) }
 
             val totalResults = root.getFirst("TotalResults", Namespaces.Search)?.text
             totalResults?.let {
@@ -130,9 +161,7 @@ public class OPDS1Parser {
 
                         val newLink = Link(
                             href = feed.href.resolve(href),
-                            mediaType = mediaTypeRetriever.retrieve(
-                                mediaType = link.getAttr("type")
-                            ),
+                            mediaType = link.getAttr("type")?.let { MediaType(it) },
                             title = entry.getFirst("title", Namespaces.Atom)?.text,
                             rels = listOfNotNull(link.getAttr("rel")).toSet(),
                             properties = Properties(otherProperties = otherProperties)
@@ -151,7 +180,7 @@ public class OPDS1Parser {
                 val hrefAttr = link.getAttr("href")?.let { Url(it) } ?: continue
                 val href = feed.href.resolve(hrefAttr)
                 val title = link.getAttr("title")
-                val type = mediaTypeRetriever.retrieve(link.getAttr("type"))
+                val type = link.getAttr("type")?.let { MediaType(it) }
                 val rels = listOfNotNull(link.getAttr("rel")).toSet()
 
                 val facetGroupName = link.getAttrNs("facetGroup", Namespaces.Opds)
@@ -194,9 +223,9 @@ public class OPDS1Parser {
         @Suppress("unused")
         public suspend fun retrieveOpenSearchTemplate(
             feed: Feed,
-            client: HttpClient = DefaultHttpClient(MediaTypeRetriever())
+            client: HttpClient = DefaultHttpClient()
         ): Try<String?, Exception> {
-            var openSearchURL: String? = null
+            var openSearchURL: Href? = null
             var selfMimeType: MediaType? = null
 
             for (link in feed.links) {
@@ -205,15 +234,15 @@ public class OPDS1Parser {
                         selfMimeType = link.mediaType
                     }
                 } else if (link.rels.contains("search")) {
-                    openSearchURL = link.href.toString()
+                    openSearchURL = link.href
                 }
             }
 
-            val unwrappedURL = openSearchURL?.let {
-                return@let it
-            }
+            val unwrappedURL = openSearchURL
+                ?.let { it.resolve() as? AbsoluteUrl }
+                ?: return Try.success(null)
 
-            return client.fetchWithDecoder(HttpRequest(unwrappedURL.toString())) {
+            return client.fetchWithDecoder(HttpRequest(unwrappedURL)) {
                 val document = XmlParser().parse(it.body.inputStream())
 
                 val urls = document.get("Url", Namespaces.Search)
@@ -243,9 +272,10 @@ public class OPDS1Parser {
                     template
                 }
                 null
-            }
+            }.mapFailure { ErrorException(it) }
         }
 
+        @OptIn(DelicateReadiumApi::class)
         private fun parseEntry(entry: ElementNode, baseUrl: Url): Publication? {
             // A title is mandatory
             val title = entry.getFirst("title", Namespaces.Atom)?.text
@@ -277,7 +307,7 @@ public class OPDS1Parser {
 
                     Link(
                         href = baseUrl.resolve(href),
-                        mediaType = mediaTypeRetriever.retrieve(element.getAttr("type")),
+                        mediaType = element.getAttr("type")?.let { MediaType(it) },
                         title = element.getAttr("title"),
                         rels = listOfNotNull(rel).toSet(),
                         properties = Properties(otherProperties = properties)
@@ -300,10 +330,12 @@ public class OPDS1Parser {
                     localizedTitle = LocalizedString(title),
 
                     modified = entry.getFirst("updated", Namespaces.Atom)
-                        ?.let { DateTime(it.text).toDate() },
+                        ?.text
+                        ?.let { Instant.parse(it) },
 
                     published = entry.getFirst("published", Namespaces.Atom)
-                        ?. let { DateTime(it.text).toDate() },
+                        ?.text
+                        ?.let { Instant.parse(it) },
 
                     languages = entry.get("language", Namespaces.Dcterms)
                         .mapNotNull { it.text },
@@ -425,7 +457,5 @@ public class OPDS1Parser {
                     children = fromXML(child)
                 )
             }
-
-        public var mediaTypeRetriever: MediaTypeRetriever = MediaTypeRetriever()
     }
 }

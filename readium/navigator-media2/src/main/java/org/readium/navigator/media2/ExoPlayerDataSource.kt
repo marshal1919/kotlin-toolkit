@@ -18,12 +18,15 @@ import com.google.android.exoplayer2.upstream.DataSpec
 import com.google.android.exoplayer2.upstream.TransferListener
 import java.io.IOException
 import kotlinx.coroutines.runBlocking
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.util.data.ReadException
 import org.readium.r2.shared.util.getOrThrow
 import org.readium.r2.shared.util.resource.Resource
 import org.readium.r2.shared.util.resource.buffered
 import org.readium.r2.shared.util.toUrl
 
+@InternalReadiumApi
 public sealed class ExoPlayerDataSourceException(message: String, cause: Throwable?) : IOException(
     message,
     cause
@@ -39,6 +42,7 @@ public sealed class ExoPlayerDataSourceException(message: String, cause: Throwab
 /**
  * An ExoPlayer's [DataSource] which retrieves resources from a [Publication].
  */
+@InternalReadiumApi
 public class ExoPlayerDataSource internal constructor(private val publication: Publication) : BaseDataSource(/* isNetwork = */
     true
 ) {
@@ -65,15 +69,14 @@ public class ExoPlayerDataSource internal constructor(private val publication: P
     private var openedResource: OpenedResource? = null
 
     override fun open(dataSpec: DataSpec): Long {
-        val link = dataSpec.uri.toUrl()
+        val resource = dataSpec.uri.toUrl()
             ?.let { publication.linkWithHref(it) }
+            ?.let { publication.get(it) }
+            // Significantly improves performances, in particular with deflated ZIP entries.
+            ?.buffered(resourceLength = cachedLengths[dataSpec.uri.toString()])
             ?: throw ExoPlayerDataSourceException.NotFound(
                 "Can't find a [Link] for URI: ${dataSpec.uri}. Make sure you only request resources declared in the manifest."
             )
-
-        val resource = publication.get(link)
-            // Significantly improves performances, in particular with deflated ZIP entries.
-            .buffered(resourceLength = cachedLengths[dataSpec.uri.toString()])
 
         openedResource = OpenedResource(
             resource = resource,
@@ -119,6 +122,7 @@ public class ExoPlayerDataSource internal constructor(private val publication: P
             val data = runBlocking {
                 openedResource.resource
                     .read(range = openedResource.position until (openedResource.position + length))
+                    .mapFailure { ReadException(it) }
                     .getOrThrow()
             }
 

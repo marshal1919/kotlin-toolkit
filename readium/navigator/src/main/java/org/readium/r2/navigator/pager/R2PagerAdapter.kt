@@ -16,8 +16,10 @@ import androidx.collection.LongSparseArray
 import androidx.collection.forEach
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
+import org.readium.r2.navigator.extensions.let
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
+import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.Url
 
 internal class R2PagerAdapter internal constructor(
@@ -32,7 +34,7 @@ internal class R2PagerAdapter internal constructor(
     internal var listener: Listener? = null
 
     internal sealed class PageResource {
-        data class EpubReflowable(val link: Link, val url: Url, val positionCount: Int) : PageResource()
+        data class EpubReflowable(val link: Link, val url: AbsoluteUrl, val positionCount: Int) : PageResource()
         data class EpubFxl(
             val leftLink: Link? = null,
             val leftUrl: Url? = null,
@@ -82,7 +84,10 @@ internal class R2PagerAdapter internal constructor(
                 )
             }
             is PageResource.EpubFxl -> {
-                R2FXLPageFragment.newInstance(resource.leftUrl, resource.rightUrl)
+                R2FXLPageFragment.newInstance(
+                    left = let(resource.leftLink, resource.leftUrl) { l, u -> Pair(l, u) },
+                    right = let(resource.rightLink, resource.rightUrl) { l, u -> Pair(l, u) }
+                )
             }
             is PageResource.Cbz -> {
                 fm.fragmentFactory

@@ -6,6 +6,143 @@ All notable changes to this project will be documented in this file. Take a look
 
 ## [Unreleased]
 
+### Changed
+
+#### Navigator
+
+* EPUB: The `scroll` preference is now forced to `true` when rendering vertical text (e.g. CJK vertical). [See this discussion for the rationale](https://github.com/readium/swift-toolkit/discussions/370).
+
+### Fixed
+
+#### Navigator
+
+* Optimized scrolling to an EPUB text-based locator if it contains a CSS selector.
+
+
+## [3.0.0-beta.1]
+
+### Deprecated
+
+#### Navigator
+
+* All the `completion` parameters of the `Navigator` APIs are removed.
+
+### Changed
+
+* All the APIs using or returning a `Date` objects are now using a custom `Instant` type. 
+
+#### Shared
+
+* The `Link` property key for archive-based publication assets (e.g. an EPUB/ZIP) is now `https://readium.org/webpub-manifest/properties#archive` instead of `archive`.
+
+#### LCP
+
+* [#493](https://github.com/readium/kotlin-toolkit/discussions/493) The LCP module does not require the Bluetooth permissions anymore to derive the device name.
+
+### Fixed
+
+#### Navigator
+
+* [#325](https://github.com/readium/kotlin-toolkit/issues/325) Top EPUB selections no longer break when dragging the selection handles.
+* Fixed applying preferences while the EPUB navigator fragment is being recreated.
+
+
+## [3.0.0-alpha.2]
+
+### Added
+
+#### Navigator
+
+* The new `HyperlinkNavigator.Listener.shouldFollowInternalLink(Link, LinkContext?)` allows you to handle footnotes according to your preference.
+    * By default, the navigator now moves to the footnote content instead of displaying a pop-up as it did in version 2.x.
+
+#### LCP
+
+* You can use `LcpService.injectLicenseDocument()` to insert an LCPL into a package, if you downloaded it manually instead of using `LcpService.acquirePublication()`.
+
+### Deprecated
+
+#### Shared
+
+* The `DownloadManager` introduced in version 3.0.0-alpha.1 has been removed due to the Android Download Manager introducing unnecessary complexities in the toolkit. Instead, we chose to enable apps to manually handle an LCP download with `LcpService.injectLicenseDocument()`.
+
+
+## [3.0.0-alpha.1]
+
+:warning: Please consult [the migration guide](docs/migration-guide.md#300-alpha1) to assist you in handling the breaking changes in this latest major release.
+
+### Added
+
+#### Shared
+
+* A new `Format` type was introduced to augment `MediaType` with more precise information about the format specifications of an `Asset`.
+* The `DownloadManager` interface handles HTTP downloads. Components like the `LcpService` rely on it for downloading publications. Readium v3 ships with two implementations:
+    * `ForegroundDownloadManager` uses an `HttpClient` to download files while the app is running.
+    * `AndroidDownloadManager` is built upon [Android's `DownloadManager`](https://developer.android.com/reference/android/app/DownloadManager) to manage HTTP downloads, even when the application is closed. It allows for resuming downloads after losing connection.
+* The default `ZipArchiveOpener` now supports streaming ZIP archives, which enables opening a packaged publication (e.g. EPUB or LCP protected audiobook):
+    * served by a remote HTTP server,
+    * accessed through an Android `ContentProvider`, such as the shared storage.
+
+#### Navigator
+
+* Support for keyboard events in the EPUB, PDF and image navigators. See `VisualNavigator.addInputListener()`.
+
+#### LCP
+
+* You can now stream an LCP protected publication using its LCP License Document. This is useful for example to read a large audiobook without downloading it on the device first.
+* The hash of protected publications is now verified upon download.
+
+### Changed
+
+* :warning: To avoid conflicts when merging your app resources, all resources declared in the Readium toolkit now have the prefix `readium_`. This means that you must rename any layouts or strings you have overridden. Some resources were removed from the toolkit. Please consult [the migration guide](docs/migration-guide.md#300-alpha1).
+* Most APIs now return an `Error` instance instead of an `Exception` in case of failure, as these objects are not thrown by the toolkit but returned as values
+
+#### Shared
+
+* :warning: To improve the interoperability with other Readium toolkits (in particular the Readium Web Toolkits, which only work in a streaming context) **Readium v3 now generates and expects valid URLs** for `Locator` and `Link`'s `href`. **You must migrate the HREFs or Locators stored in your database**, please consult [the migration guide](docs/migration-guide.md#300-alpha1).
+* `Link.href` and `Locator.href` are now respectively `Href` and `Url` objects. If you still need the string value, you can call `toString()`
+* `MediaType` no longer has static helpers for sniffing it from a file or URL. Instead, you can use an `AssetRetriever` to retrieve the format of a file.
+
+#### Navigator
+
+* Version 3 includes a new component called `DirectionalNavigationAdapter` that replaces `EdgeTapNavigation`. This helper enables users to navigate between pages using arrow and space keys on their keyboard or by tapping the edge of the screen.
+* The `onTap` and `onDrag` events of `VisualNavigator.Listener` have been deprecated. You can now use multiple implementations of `InputListener` with `VisualNavigator.addInputListener()`.
+
+#### Streamer
+
+* The `Streamer` object has been deprecated in favor of components with smaller responsibilities: `AssetRetriever` and `PublicationOpener`.
+
+#### LCP
+
+* `LcpService.acquirePublication()` is deprecated in favor of `LcpService.publicationRetriever()`, which provides greater flexibility thanks to the `DownloadManager`.
+* The way the host view of a `LcpDialogAuthentication` is retrieved was changed to support Android configuration changes.
+
+### Deprecated
+
+* Both the Fuel and Kovenant libraries have been completely removed from the toolkit. With that, several deprecated functions have also been removed.
+
+#### Shared
+
+* The `putPublication` and `getPublication` helpers in `Intent` are deprecated. Now, it is the application's responsibility to pass `Publication` objects between activities and reopen them when necessary.
+
+#### Navigator
+
+* EPUB external links are no longer handled by the navigator. You need to open the link in your own Web View or Chrome Custom Tab.
+
+
+## [2.4.1]
+
+### Added
+
+#### LCP
+
+* [#509](https://github.com/readium/kotlin-toolkit/issues/509) Support for the new 2.x LCP Profiles.
+
+
+## [2.4.0]
+
+* Readium is now distributed with [Maven Central](https://search.maven.org/search?q=g:org.readium.kotlin-toolkit). Take a look at [the migration guide](docs/migration-guide.md#240) to update your Gradle configuration.
+
 ### Added
 
 #### Navigator
@@ -16,10 +153,27 @@ All notable changes to this project will be documented in this file. Take a look
     * `WebSettings.textZoom` will work with more publications than `--USER__fontSize`, even the ones poorly authored. However the page width is not adjusted when changing the font size to keep the optimal line length.
 * Scroll mode: jumping between two EPUB resources with a horizontal swipe triggers the `Navigator.Listener.onJumpToLocator()` callback.
     * This can be used to allow the user to go back to their previous location if they swiped across chapters by mistake.
-* Support for keyboard events in the EPUB, PDF and image navigators. See `VisualNavigator.addInputListener()`.
 * Support for non-linear EPUB resources with an opt-in in reading apps (contributed by @chrfalch in [#375](https://github.com/readium/kotlin-toolkit/pull/375) and [#376](https://github.com/readium/kotlin-toolkit/pull/376)).
      1. Override loading non-linear resources with `VisualNavigator.Listener.shouldJumpToLink()`.
      2. Present a new `EpubNavigatorFragment` by providing a custom `readingOrder` with only this resource to the constructor.
+* Added dummy navigator fragment factories to prevent crashes caused by Android restoring the fragments after a process death.
+    * To use it, set the dummy fragment factory when you don't have access to the `Publication` instance. Then, either finish the `Activity` or pop the fragment from the UI before it resumes.
+        ```kotlin
+        override fun onCreate(savedInstanceState: Bundle?) {
+            val publication = model.publication ?: run {
+                childFragmentManager.fragmentFactory = EpubNavigatorFragment.createDummyFactory()
+                super.onCreate(savedInstanceState)
+
+                requireActivity().finish()
+                // or
+                navController?.popBackStack()
+
+                return
+            }
+
+            // Create the real navigator factory as usual...
+        }
+        ```
 
 #### Streamer
 
@@ -66,10 +220,6 @@ All notable changes to this project will be documented in this file. Take a look
 #### Streamer
 
 * Fixed issue with the TTS starting from the beginning of the chapter instead of the current position.
-
-#### OPDS
-
-* Fixed race conditions causing `ConcurrentModificationException` to be thrown when parsing an OPDS 2 feed.
 
 ## [2.3.0]
 
@@ -704,4 +854,9 @@ progression. Now if no reading progression is set, the `effectiveReadingProgress
 [2.2.0]: https://github.com/readium/kotlin-toolkit/compare/2.1.1...2.2.0
 [2.2.1]: https://github.com/readium/kotlin-toolkit/compare/2.2.0...2.2.1
 [2.3.0]: https://github.com/readium/kotlin-toolkit/compare/2.2.1...2.3.0
+[2.4.0]: https://github.com/readium/kotlin-toolkit/compare/2.3.0...2.4.0
+[2.4.1]: https://github.com/readium/kotlin-toolkit/compare/2.4.0...2.4.1
+[3.0.0-alpha.1]: https://github.com/readium/kotlin-toolkit/compare/2.4.1...3.0.0-alpha.1
+[3.0.0-alpha.2]: https://github.com/readium/kotlin-toolkit/compare/3.0.0-alpha.1...3.0.0-alpha.2
+[3.0.0-beta.1]: https://github.com/readium/kotlin-toolkit/compare/3.0.0-alpha.2...3.0.0-beta.1
 

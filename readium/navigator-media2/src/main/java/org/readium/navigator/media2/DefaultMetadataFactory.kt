@@ -1,3 +1,6 @@
+@file:Suppress("DEPRECATION")
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.navigator.media2
 
 import android.graphics.Bitmap
@@ -6,10 +9,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.services.cover
 
-@ExperimentalMedia2
+@Suppress("DEPRECATION")
 internal class DefaultMetadataFactory(private val publication: Publication) : MediaMetadataFactory {
 
     private val coroutineScope =

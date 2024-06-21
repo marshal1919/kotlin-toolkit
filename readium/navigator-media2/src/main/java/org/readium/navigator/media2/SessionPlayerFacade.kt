@@ -4,6 +4,8 @@
  * available in the top-level LICENSE file of the project.
  */
 
+@file:Suppress("DEPRECATION")
+
 package org.readium.navigator.media2
 
 import android.app.PendingIntent
@@ -18,7 +20,6 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.ExperimentalTime
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.ReceiveChannel
@@ -40,7 +41,6 @@ import timber.log.Timber
  * - in case of failure, the playback can be left in an intermediate state
  * - the behaviour is undefined if any external controller takes actions at the same time
  */
-@OptIn(ExperimentalTime::class)
 internal class SessionPlayerFacade(
     private val sessionPlayer: SessionPlayer,
     private val seekCompletedReceiver: ReceiveChannel<Long>,

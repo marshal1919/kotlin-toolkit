@@ -4,93 +4,194 @@
  * available in the top-level LICENSE file of the project.
  */
 
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.r2.streamer.parser.readium
 
 import android.content.Context
+import org.readium.r2.shared.DelicateReadiumApi
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.publication.Manifest
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.services.InMemoryCacheService
 import org.readium.r2.shared.publication.services.PerResourcePositionsService
+import org.readium.r2.shared.publication.services.WebPositionsService
 import org.readium.r2.shared.publication.services.cacheServiceFactory
 import org.readium.r2.shared.publication.services.locatorServiceFactory
 import org.readium.r2.shared.publication.services.positionsServiceFactory
+import org.readium.r2.shared.util.AbsoluteUrl
+import org.readium.r2.shared.util.DebugError
 import org.readium.r2.shared.util.Try
 import org.readium.r2.shared.util.Url
-import org.readium.r2.shared.util.getOrElse
+import org.readium.r2.shared.util.asset.Asset
+import org.readium.r2.shared.util.asset.ContainerAsset
+import org.readium.r2.shared.util.asset.ResourceAsset
+import org.readium.r2.shared.util.data.CompositeContainer
+import org.readium.r2.shared.util.data.Container
+import org.readium.r2.shared.util.data.ReadError
+import org.readium.r2.shared.util.data.decodeRwpm
+import org.readium.r2.shared.util.data.readDecodeOrElse
+import org.readium.r2.shared.util.format.FormatSpecification
+import org.readium.r2.shared.util.format.Specification
+import org.readium.r2.shared.util.http.HttpClient
+import org.readium.r2.shared.util.http.HttpContainer
 import org.readium.r2.shared.util.logging.WarningLogger
 import org.readium.r2.shared.util.mediatype.MediaType
-import org.readium.r2.shared.util.mediatype.MediaTypeRetriever
 import org.readium.r2.shared.util.pdf.PdfDocumentFactory
-import org.readium.r2.shared.util.resource.readAsJson
+import org.readium.r2.shared.util.resource.Resource
+import org.readium.r2.shared.util.resource.SingleResourceContainer
 import org.readium.r2.streamer.parser.PublicationParser
 import org.readium.r2.streamer.parser.audio.AudioLocatorService
+import timber.log.Timber
 
 /**
  * Parses any Readium Web Publication package or manifest, e.g. WebPub, Audiobook, DiViNa, LCPDF...
  */
 public class ReadiumWebPubParser(
     private val context: Context? = null,
-    private val pdfFactory: PdfDocumentFactory<*>?,
-    private val mediaTypeRetriever: MediaTypeRetriever
+    private val httpClient: HttpClient,
+    private val pdfFactory: PdfDocumentFactory<*>?
 ) : PublicationParser {
 
     override suspend fun parse(
-        asset: PublicationParser.Asset,
+        asset: Asset,
         warnings: WarningLogger?
-    ): Try<Publication.Builder, PublicationParser.Error> {
-        if (!asset.mediaType.isReadiumWebPublication) {
-            return Try.failure(PublicationParser.Error.FormatNotSupported())
+    ): Try<Publication.Builder, PublicationParser.ParseError> = when (asset) {
+        is ResourceAsset -> parseResourceAsset(asset.resource, asset.format.specification)
+        is ContainerAsset -> parseContainerAsset(asset.container, asset.format.specification)
+    }
+
+    private suspend fun parseContainerAsset(
+        container: Container<Resource>,
+        formatSpecification: FormatSpecification
+    ): Try<Publication.Builder, PublicationParser.ParseError> {
+        if (!formatSpecification.conformsTo(Specification.Rpf)) {
+            return Try.failure(PublicationParser.ParseError.FormatNotSupported())
         }
 
-        val manifestJson = asset.container
-            .get(Url("manifest.json")!!)
-            .readAsJson()
-            .getOrElse { return Try.failure(PublicationParser.Error.IO(it)) }
-
-        val manifest = Manifest.fromJSON(
-            manifestJson,
-            mediaTypeRetriever = mediaTypeRetriever
-        )
+        val manifestResource = container[Url("manifest.json")!!]
             ?: return Try.failure(
-                PublicationParser.Error.ParsingFailed("Failed to parse the RWPM Manifest")
+                PublicationParser.ParseError.Reading(
+                    ReadError.Decoding(
+                        DebugError("Missing manifest.")
+                    )
+                )
             )
 
-        // Checks the requirements from the LCPDF specification.
-        // https://readium.org/lcp-specs/notes/lcp-for-pdf.html
-        val readingOrder = manifest.readingOrder
-        if (asset.mediaType == MediaType.LCP_PROTECTED_PDF &&
-            (readingOrder.isEmpty() || !readingOrder.all { MediaType.PDF.matches(it.mediaType) })
-        ) {
-            return Try.failure(PublicationParser.Error.ParsingFailed("Invalid LCP Protected PDF."))
-        }
+        val manifest = manifestResource
+            .readDecodeOrElse(
+                decode = { it.decodeRwpm() },
+                recover = { return Try.failure(PublicationParser.ParseError.Reading(it)) }
+            )
+
+        checkProfileRequirements(manifest)
+            ?.let { return Try.failure(it) }
 
         val servicesBuilder = Publication.ServicesBuilder().apply {
             cacheServiceFactory = InMemoryCacheService.createFactory(context)
 
-            when (asset.mediaType) {
-                MediaType.LCP_PROTECTED_PDF ->
-                    positionsServiceFactory = pdfFactory?.let { LcpdfPositionsService.create(it) }
+            positionsServiceFactory = when {
+                manifest.conformsTo(Publication.Profile.PDF) && formatSpecification.conformsTo(
+                    Specification.Lcp
+                ) ->
+                    pdfFactory?.let { LcpdfPositionsService.create(it) }
+                manifest.conformsTo(Publication.Profile.DIVINA) ->
+                    PerResourcePositionsService.createFactory(MediaType("image/*")!!)
+                else ->
+                    WebPositionsService.createFactory(httpClient)
+            }
 
-                MediaType.DIVINA ->
-                    positionsServiceFactory = PerResourcePositionsService.createFactory(
-                        MediaType("image/*")!!
-                    )
-
-                MediaType.READIUM_AUDIOBOOK, MediaType.LCP_PROTECTED_AUDIOBOOK ->
-                    locatorServiceFactory = AudioLocatorService.createFactory()
+            locatorServiceFactory = when {
+                manifest.conformsTo(Publication.Profile.AUDIOBOOK) ->
+                    AudioLocatorService.createFactory()
+                else ->
+                    null
             }
         }
 
-        val publicationBuilder = Publication.Builder(manifest, asset.container, servicesBuilder)
+        val publicationBuilder = Publication.Builder(manifest, container, servicesBuilder)
         return Try.success(publicationBuilder)
     }
-}
 
-/** Returns whether this media type is of a Readium Web Publication profile. */
-private val MediaType.isReadiumWebPublication: Boolean get() = matchesAny(
-    MediaType.READIUM_WEBPUB,
-    MediaType.DIVINA,
-    MediaType.LCP_PROTECTED_PDF,
-    MediaType.READIUM_AUDIOBOOK,
-    MediaType.LCP_PROTECTED_AUDIOBOOK
-)
+    private fun checkProfileRequirements(manifest: Manifest): PublicationParser.ParseError? =
+        when {
+            manifest.conformsTo(Publication.Profile.PDF) -> {
+                if (manifest.readingOrder.isEmpty() ||
+                    manifest.readingOrder.any { !MediaType.PDF.matches(it.mediaType) }
+                ) {
+                    PublicationParser.ParseError.Reading(
+                        ReadError.Decoding(
+                            "Publication does not conform to the PDF profile specification."
+                        )
+                    )
+                } else {
+                    null
+                }
+            }
+            manifest.conformsTo(Publication.Profile.AUDIOBOOK) -> {
+                if (manifest.readingOrder.isEmpty()) {
+                    PublicationParser.ParseError.Reading(
+                        ReadError.Decoding(
+                            "Publication does not conform to the Audiobook profile specification."
+                        )
+                    )
+                } else {
+                    null
+                }
+            }
+            else -> {
+                null
+            }
+        }
+
+    @OptIn(DelicateReadiumApi::class)
+    private suspend fun parseResourceAsset(
+        resource: Resource,
+        formatSpecification: FormatSpecification
+    ): Try<Publication.Builder, PublicationParser.ParseError> {
+        if (!formatSpecification.conformsTo(Specification.Rwpm)) {
+            return Try.failure(PublicationParser.ParseError.FormatNotSupported())
+        }
+
+        val manifest = resource
+            .readDecodeOrElse(
+                decode = { it.decodeRwpm() },
+                recover = { return Try.failure(PublicationParser.ParseError.Reading(it)) }
+            )
+
+        val baseUrl = manifest.linkWithRel("self")?.href?.resolve()
+        if (baseUrl == null) {
+            Timber.w("No self link found in the manifest at ${resource.sourceUrl}")
+        } else {
+            if (baseUrl !is AbsoluteUrl) {
+                return Try.failure(
+                    PublicationParser.ParseError.Reading(
+                        ReadError.Decoding("Self link is not absolute.")
+                    )
+                )
+            }
+            if (!baseUrl.isHttp) {
+                return Try.failure(
+                    PublicationParser.ParseError.Reading(
+                        ReadError.Decoding("Self link doesn't use the HTTP(S) scheme.")
+                    )
+                )
+            }
+        }
+
+        val resources = (manifest.readingOrder + manifest.resources)
+            .map { it.url() }
+            .toSet()
+
+        val container =
+            CompositeContainer(
+                SingleResourceContainer(
+                    Url("manifest.json")!!,
+                    resource
+                ),
+                HttpContainer(baseUrl, resources, httpClient)
+            )
+
+        return parseContainerAsset(container, FormatSpecification(Specification.Rpf))
+    }
+}

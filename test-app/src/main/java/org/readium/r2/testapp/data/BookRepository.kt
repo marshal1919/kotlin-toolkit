@@ -7,15 +7,13 @@
 package org.readium.r2.testapp.data
 
 import androidx.annotation.ColorInt
-import androidx.lifecycle.LiveData
 import java.io.File
 import kotlinx.coroutines.flow.Flow
 import org.joda.time.DateTime
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.indexOfFirstWithHref
-import org.readium.r2.shared.publication.protection.ContentProtection
-import org.readium.r2.shared.util.asset.AssetType
+import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.mediatype.MediaType
 import org.readium.r2.testapp.data.db.BooksDao
 import org.readium.r2.testapp.data.model.Book
@@ -26,7 +24,7 @@ import org.readium.r2.testapp.utils.extensions.readium.authorName
 class BookRepository(
     private val booksDao: BooksDao
 ) {
-    fun books(): LiveData<List<Book>> = booksDao.getAllBooks()
+    fun books(): Flow<List<Book>> = booksDao.getAllBooks()
 
     suspend fun get(id: Long) = booksDao.get(id)
 
@@ -49,7 +47,7 @@ class BookRepository(
         return booksDao.insertBookmark(bookmark)
     }
 
-    fun bookmarksForBook(bookId: Long): LiveData<List<Bookmark>> =
+    fun bookmarksForBook(bookId: Long): Flow<List<Bookmark>> =
         booksDao.getBookmarksForBook(bookId)
 
     suspend fun deleteBookmark(bookmarkId: Long) = booksDao.deleteBookmark(bookmarkId)
@@ -80,22 +78,18 @@ class BookRepository(
     }
 
     suspend fun insertBook(
-        href: String,
+        url: Url,
         mediaType: MediaType,
-        assetType: AssetType,
-        drm: ContentProtection.Scheme?,
         publication: Publication,
         cover: File
     ): Long {
         val book = Book(
             creation = DateTime().toDate().time,
-            title = publication.metadata.title,
+            title = publication.metadata.title ?: url.filename,
             author = publication.metadata.authorName,
-            href = href,
+            href = url.toString(),
             identifier = publication.metadata.identifier ?: "",
             mediaType = mediaType,
-            assetType = assetType,
-            drm = drm,
             progression = "{}",
             cover = cover.path
         )

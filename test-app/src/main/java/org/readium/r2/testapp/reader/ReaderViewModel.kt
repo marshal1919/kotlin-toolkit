@@ -12,18 +12,25 @@ import android.graphics.Color
 import androidx.annotation.ColorInt
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.paging.*
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import androidx.paging.InvalidatingPagingSourceFactory
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.readium.r2.navigator.Decoration
-import org.readium.r2.navigator.ExperimentalDecorator
+import org.readium.r2.navigator.HyperlinkNavigator
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.image.ImageNavigatorFragment
 import org.readium.r2.navigator.pdf.PdfNavigatorFragment
 import org.readium.r2.shared.ExperimentalReadiumApi
-import org.readium.r2.shared.UserException
+import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.LocatorCollection
 import org.readium.r2.shared.publication.Publication
@@ -33,18 +40,22 @@ import org.readium.r2.shared.publication.services.search.search
 import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.Try
 import org.readium.r2.shared.util.Url
-import org.readium.r2.shared.util.resource.Resource
+import org.readium.r2.shared.util.data.ReadError
 import org.readium.r2.testapp.Application
+import org.readium.r2.testapp.R
 import org.readium.r2.testapp.data.BookRepository
 import org.readium.r2.testapp.data.model.Highlight
+import org.readium.r2.testapp.domain.toUserError
 import org.readium.r2.testapp.reader.preferences.UserPreferencesViewModel
 import org.readium.r2.testapp.reader.tts.TtsViewModel
 import org.readium.r2.testapp.search.SearchPagingSource
 import org.readium.r2.testapp.utils.EventChannel
+import org.readium.r2.testapp.utils.UserError
 import org.readium.r2.testapp.utils.createViewModelFactory
+import org.readium.r2.testapp.utils.extensions.toHtml
 import timber.log.Timber
 
-@OptIn(ExperimentalDecorator::class, ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalReadiumApi::class)
 class ReaderViewModel(
     private val bookId: Long,
     private val readerRepository: ReaderRepository,
@@ -68,7 +79,10 @@ class ReaderViewModel(
     val activityChannel: EventChannel<ActivityCommand> =
         EventChannel(Channel(Channel.BUFFERED), viewModelScope)
 
-    val fragmentChannel: EventChannel<FeedbackEvent> =
+    val fragmentChannel: EventChannel<FragmentFeedback> =
+        EventChannel(Channel(Channel.BUFFERED), viewModelScope)
+
+    val visualFragmentChannel: EventChannel<VisualFragmentCommand> =
         EventChannel(Channel(Channel.BUFFERED), viewModelScope)
 
     val searchChannel: EventChannel<SearchCommand> =
@@ -84,7 +98,10 @@ class ReaderViewModel(
         readerInitData = readerInitData
     )
 
-    fun close() {
+    override fun onCleared() {
+        // When the ReaderViewModel is disposed of, we want to close the publication to avoid
+        // using outdated information (such as the initial location) if the `ReaderActivity` is
+        // opened again with the same book.
         readerRepository.close(bookId)
     }
 
@@ -98,9 +115,9 @@ class ReaderViewModel(
     fun insertBookmark(locator: Locator) = viewModelScope.launch {
         val id = bookRepository.insertBookmark(bookId, publication, locator)
         if (id != -1L) {
-            fragmentChannel.send(FeedbackEvent.BookmarkSuccessfullyAdded)
+            fragmentChannel.send(FragmentFeedback.BookmarkSuccessfullyAdded)
         } else {
-            fragmentChannel.send(FeedbackEvent.BookmarkFailed)
+            fragmentChannel.send(FragmentFeedback.BookmarkFailed)
         }
     }
 
@@ -205,8 +222,14 @@ class ReaderViewModel(
         lastSearchQuery = query
         _searchLocators.value = emptyList()
         searchIterator = publication.search(query)
-            .onFailure { activityChannel.send(ActivityCommand.ToastError(it)) }
-            .getOrNull()
+            ?: run {
+                activityChannel.send(
+                    ActivityCommand.ToastError(
+                        UserError(R.string.search_error_not_searchable, cause = null)
+                    )
+                )
+                null
+            }
         pagingSourceFactory.invalidate()
         searchChannel.send(SearchCommand.StartNewSearch)
     }
@@ -249,18 +272,36 @@ class ReaderViewModel(
 
     // Navigator.Listener
 
-    override fun onResourceLoadFailed(href: Url, error: Resource.Exception) {
-        val message = when (error) {
-            is Resource.Exception.OutOfMemory -> "The resource is too large to be rendered on this device: $href"
-            else -> "Failed to render the resource: $href"
-        }
-        activityChannel.send(ActivityCommand.ToastError(UserException(message, error)))
+    override fun onResourceLoadFailed(href: Url, error: ReadError) {
+        activityChannel.send(
+            ActivityCommand.ToastError(error.toUserError())
+        )
     }
 
     // HyperlinkNavigator.Listener
     override fun onExternalLinkActivated(url: AbsoluteUrl) {
         activityChannel.send(ActivityCommand.OpenExternalLink(url))
     }
+
+    override fun shouldFollowInternalLink(
+        link: Link,
+        context: HyperlinkNavigator.LinkContext?
+    ): Boolean =
+        when (context) {
+            is HyperlinkNavigator.FootnoteContext -> {
+                val text =
+                    if (link.mediaType?.isHtml == true) {
+                        context.noteContent.toHtml()
+                    } else {
+                        context.noteContent
+                    }
+
+                val command = VisualFragmentCommand.ShowPopup(text)
+                visualFragmentChannel.send(command)
+                false
+            }
+            else -> true
+        }
 
     // Search
 
@@ -283,12 +324,16 @@ class ReaderViewModel(
         object OpenOutlineRequested : ActivityCommand()
         object OpenDrmManagementRequested : ActivityCommand()
         class OpenExternalLink(val url: AbsoluteUrl) : ActivityCommand()
-        class ToastError(val error: UserException) : ActivityCommand()
+        class ToastError(val error: UserError) : ActivityCommand()
     }
 
-    sealed class FeedbackEvent {
-        object BookmarkSuccessfullyAdded : FeedbackEvent()
-        object BookmarkFailed : FeedbackEvent()
+    sealed class FragmentFeedback {
+        object BookmarkSuccessfullyAdded : FragmentFeedback()
+        object BookmarkFailed : FragmentFeedback()
+    }
+
+    sealed class VisualFragmentCommand {
+        class ShowPopup(val text: CharSequence) : VisualFragmentCommand()
     }
 
     sealed class SearchCommand {
@@ -298,10 +343,11 @@ class ReaderViewModel(
     companion object {
         fun createFactory(application: Application, arguments: ReaderActivityContract.Arguments) =
             createViewModelFactory {
-                val readerRepository =
-                    application.readerRepository.getCompleted()
-
-                ReaderViewModel(arguments.bookId, readerRepository, application.bookRepository)
+                ReaderViewModel(
+                    arguments.bookId,
+                    application.readerRepository,
+                    application.bookRepository
+                )
             }
     }
 }

@@ -14,48 +14,12 @@ plugins {
 }
 
 android {
-    resourcePrefix = "readium_"
+    namespace = "org.readium.r2.navigator"
 
-    compileSdk = 34
-
-    defaultConfig {
-        minSdk = 21
-        targetSdk = 34
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
-        freeCompilerArgs = freeCompilerArgs + listOf(
-            "-opt-in=kotlin.RequiresOptIn",
-            "-opt-in=org.readium.r2.shared.InternalReadiumApi"
-        )
-    }
-    testOptions {
-        unitTests.isIncludeAndroidResources = true
-    }
-    buildTypes {
-        getByName("release") {
-            isMinifyEnabled = false
-            proguardFiles(getDefaultProguardFile("proguard-android.txt"))
-        }
-    }
     buildFeatures {
         viewBinding = true
-        buildConfig = true
     }
-    namespace = "org.readium.r2.navigator"
 }
-
-kotlin {
-    explicitApi()
-}
-
-rootProject.ext["publish.artifactId"] = "readium-navigator"
-apply(from = "$rootDir/scripts/publish-module.gradle")
 
 dependencies {
     api(project(":readium:readium-shared"))
@@ -83,7 +47,7 @@ dependencies {
     implementation(libs.google.material)
     implementation(libs.timber)
     implementation(libs.joda.time)
-    implementation(libs.bundles.coroutines)
+    implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.jsoup)
 

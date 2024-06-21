@@ -12,19 +12,15 @@ import org.readium.r2.shared.publication.services.cover
 import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.Try
 import org.readium.r2.shared.util.http.HttpClient
-import org.readium.r2.shared.util.http.HttpException
+import org.readium.r2.shared.util.http.HttpError
 import org.readium.r2.shared.util.http.HttpRequest
 import org.readium.r2.shared.util.http.fetchWithDecoder
 import org.readium.r2.testapp.utils.tryOrLog
 
 class CoverStorage(
-    appStorageDir: File,
+    private val appStorageDir: File,
     private val httpClient: HttpClient
 ) {
-
-    private val coverDir: File =
-        File(appStorageDir, "covers/")
-            .apply { if (!exists()) mkdirs() }
 
     suspend fun storeCover(publication: Publication, overrideUrl: AbsoluteUrl?): Try<File, Exception> {
         val coverBitmap: Bitmap? = overrideUrl?.fetchBitmap()
@@ -40,7 +36,7 @@ class CoverStorage(
         tryOrLog {
             when {
                 isFile -> toFile()?.toBitmap()
-                isHttp -> httpClient.fetchBitmap(HttpRequest(toString())).getOrNull()
+                isHttp -> httpClient.fetchBitmap(HttpRequest(this)).getOrNull()
                 else -> null
             }
         }
@@ -52,14 +48,14 @@ class CoverStorage(
             }
         }
 
-    private suspend fun HttpClient.fetchBitmap(request: HttpRequest): Try<Bitmap, HttpException> =
+    private suspend fun HttpClient.fetchBitmap(request: HttpRequest): Try<Bitmap, HttpError> =
         fetchWithDecoder(request) { response ->
             BitmapFactory.decodeByteArray(response.body, 0, response.body.size)
         }
 
     private suspend fun storeCover(cover: Bitmap?): File =
         withContext(Dispatchers.IO) {
-            val coverImageFile = File(coverDir, "${UUID.randomUUID()}.png")
+            val coverImageFile = File(coverDir(), "${UUID.randomUUID()}.png")
             val resized = cover?.let { Bitmap.createScaledBitmap(it, 120, 200, true) }
             val fos = FileOutputStream(coverImageFile)
             resized?.compress(Bitmap.CompressFormat.PNG, 80, fos)
@@ -67,4 +63,8 @@ class CoverStorage(
             fos.close()
             coverImageFile
         }
+
+    private fun coverDir(): File =
+        File(appStorageDir, "covers/")
+            .apply { if (!exists()) mkdirs() }
 }

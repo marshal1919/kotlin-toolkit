@@ -7,10 +7,14 @@
  * LICENSE file present in the project repository where this source code is maintained.
  */
 
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.r2.shared.publication
 
 import org.json.JSONArray
 import org.json.JSONObject
+import org.readium.r2.shared.DelicateReadiumApi
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.JSONable
 import org.readium.r2.shared.extensions.optStringsFromArrayOrSingle
 import org.readium.r2.shared.extensions.putIfNotEmpty
@@ -20,7 +24,6 @@ import org.readium.r2.shared.util.logging.ConsoleWarningLogger
 import org.readium.r2.shared.util.logging.WarningLogger
 import org.readium.r2.shared.util.logging.log
 import org.readium.r2.shared.util.mediatype.MediaType
-import org.readium.r2.shared.util.mediatype.MediaTypeRetriever
 
 /**
  * Holds the metadata of a Readium publication, as described in the Readium Web Publication Manifest.
@@ -64,10 +67,11 @@ public data class Manifest(
      * If there's no match, tries again after removing any query parameter and anchor from the
      * given [href].
      */
+    @OptIn(DelicateReadiumApi::class)
     public fun linkWithHref(href: Url): Link? {
         fun List<Link>.deepLinkWithHref(href: Url): Link? {
             for (l in this) {
-                if (l.url() == href) {
+                if (l.url().normalize() == href) {
                     return l
                 } else {
                     l.alternates.deepLinkWithHref(href)?.let { return it }
@@ -83,8 +87,9 @@ public data class Manifest(
                 ?: links.deepLinkWithHref(href)
         }
 
-        return find(href)
-            ?: find(href.removeFragment().removeQuery())
+        val normalizedHref = href.normalize()
+        return find(normalizedHref)
+            ?: find(normalizedHref.removeFragment().removeQuery())
     }
 
     /**
@@ -154,7 +159,6 @@ public data class Manifest(
          */
         public fun fromJSON(
             json: JSONObject?,
-            mediaTypeRetriever: MediaTypeRetriever = MediaTypeRetriever(),
             warnings: WarningLogger? = ConsoleWarningLogger()
         ): Manifest? {
             json ?: return null
@@ -163,7 +167,6 @@ public data class Manifest(
 
             val metadata = Metadata.fromJSON(
                 json.remove("metadata") as? JSONObject,
-                mediaTypeRetriever,
                 warnings
             )
             if (metadata == null) {
@@ -173,7 +176,6 @@ public data class Manifest(
 
             val links = Link.fromJSONArray(
                 json.remove("links") as? JSONArray,
-                mediaTypeRetriever,
                 warnings
             )
 
@@ -181,28 +183,24 @@ public data class Manifest(
             val readingOrderJSON = (json.remove("readingOrder") ?: json.remove("spine")) as? JSONArray
             val readingOrder = Link.fromJSONArray(
                 readingOrderJSON,
-                mediaTypeRetriever,
                 warnings
             )
                 .filter { it.mediaType != null }
 
             val resources = Link.fromJSONArray(
                 json.remove("resources") as? JSONArray,
-                mediaTypeRetriever,
                 warnings
             )
                 .filter { it.mediaType != null }
 
             val tableOfContents = Link.fromJSONArray(
                 json.remove("toc") as? JSONArray,
-                mediaTypeRetriever,
                 warnings
             )
 
             // Parses subcollections from the remaining JSON properties.
             val subcollections = PublicationCollection.collectionsFromJSON(
                 json,
-                mediaTypeRetriever,
                 warnings
             )
 

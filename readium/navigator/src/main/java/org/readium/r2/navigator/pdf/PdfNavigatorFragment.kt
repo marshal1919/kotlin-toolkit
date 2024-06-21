@@ -4,6 +4,8 @@
  * available in the top-level LICENSE file of the project.
  */
 
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.r2.navigator.pdf
 
 import android.os.Bundle
@@ -23,9 +25,11 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import org.readium.r2.navigator.NavigatorFragment
-import org.readium.r2.navigator.OverflowNavigator
+import org.readium.r2.navigator.OverflowableNavigator
 import org.readium.r2.navigator.R
+import org.readium.r2.navigator.RestorationNotSupportedException
 import org.readium.r2.navigator.VisualNavigator
+import org.readium.r2.navigator.dummyPublication
 import org.readium.r2.navigator.extensions.normalizeLocator
 import org.readium.r2.navigator.extensions.page
 import org.readium.r2.navigator.input.CompositeInputListener
@@ -36,11 +40,14 @@ import org.readium.r2.navigator.util.SingleFragmentFactory
 import org.readium.r2.navigator.util.createFragmentFactory
 import org.readium.r2.shared.DelicateReadiumApi
 import org.readium.r2.shared.ExperimentalReadiumApi
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.extensions.mapStateIn
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.ReadingProgression as PublicationReadingProgression
+import org.readium.r2.shared.publication.services.isRestricted
+import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.mediatype.MediaType
 
 /**
@@ -59,7 +66,7 @@ public class PdfNavigatorFragment<S : Configurable.Settings, P : Configurable.Pr
     private val initialPreferences: P,
     private val listener: Listener?,
     private val pdfEngineProvider: PdfEngineProvider<S, P, *>
-) : NavigatorFragment(publication), VisualNavigator, OverflowNavigator, Configurable<S, P> {
+) : NavigatorFragment(publication), VisualNavigator, OverflowableNavigator, Configurable<S, P> {
 
     public interface Listener : VisualNavigator.Listener
 
@@ -91,13 +98,35 @@ public class PdfNavigatorFragment<S : Configurable.Settings, P : Configurable.Pr
                 pdfEngineProvider
             )
         }
+
+        /**
+         * Creates a factory for a dummy [PdfNavigatorFragment].
+         *
+         * Used when Android restore the [PdfNavigatorFragment] after the process was killed. You need
+         * to make sure the fragment is removed from the screen before `onResume` is called.
+         */
+        public fun <P : Configurable.Preferences<P>> createDummyFactory(
+            pdfEngineProvider: PdfEngineProvider<*, P, *>
+        ): FragmentFactory = createFragmentFactory {
+            PdfNavigatorFragment(
+                publication = dummyPublication,
+                initialLocator = Locator(href = Url("#")!!, mediaType = MediaType.PDF),
+                initialPreferences = pdfEngineProvider.createEmptyPreferences(),
+                listener = null,
+                pdfEngineProvider = pdfEngineProvider
+            )
+        }
     }
 
     init {
-        require(
-            publication.readingOrder.count() == 1 &&
-                publication.readingOrder.first().mediaType?.matches(MediaType.PDF) == true
-        ) { "[PdfNavigatorFragment] currently supports only publications with a single PDF for reading order" }
+        require(!publication.isRestricted) { "The provided publication is restricted. Check that any DRM was properly unlocked using a Content Protection." }
+
+        if (publication != dummyPublication) {
+            require(
+                publication.readingOrder.count() == 1 &&
+                    publication.readingOrder.first().mediaType?.matches(MediaType.PDF) == true
+            ) { "[PdfNavigatorFragment] currently supports only publications with a single PDF for reading order" }
+        }
     }
 
     private val inputListener = CompositeInputListener()
@@ -173,6 +202,14 @@ public class PdfNavigatorFragment<S : Configurable.Settings, P : Configurable.Pr
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+
+        if (publication == dummyPublication) {
+            throw RestorationNotSupportedException
+        }
+    }
+
     // Configurable
 
     override val settings: StateFlow<S> get() = viewModel.settings
@@ -185,32 +222,30 @@ public class PdfNavigatorFragment<S : Configurable.Settings, P : Configurable.Pr
 
     override val currentLocator: StateFlow<Locator> get() = viewModel.currentLocator
 
-    override fun go(locator: Locator, animated: Boolean, completion: () -> Unit): Boolean {
+    override fun go(locator: Locator, animated: Boolean): Boolean {
         @Suppress("NAME_SHADOWING")
         val locator = publication.normalizeLocator(locator)
         listener?.onJumpToLocator(locator)
-        return goToPageIndex(locator.locations.pageIndex, animated, completion)
+        return goToPageIndex(locator.locations.pageIndex, animated)
     }
 
-    override fun go(link: Link, animated: Boolean, completion: () -> Unit): Boolean {
+    override fun go(link: Link, animated: Boolean): Boolean {
         val locator = publication.locatorFromLink(link) ?: return false
-        return go(locator, animated, completion)
+        return go(locator, animated)
     }
 
-    override fun goForward(animated: Boolean, completion: () -> Unit): Boolean {
+    override fun goForward(animated: Boolean): Boolean {
         val pageIndex = currentLocator.value.locations.pageIndex + 1
-        return goToPageIndex(pageIndex, animated, completion)
+        return goToPageIndex(pageIndex, animated)
     }
 
-    override fun goBackward(animated: Boolean, completion: () -> Unit): Boolean {
+    override fun goBackward(animated: Boolean): Boolean {
         val pageIndex = currentLocator.value.locations.pageIndex - 1
-        return goToPageIndex(pageIndex, animated, completion)
+        return goToPageIndex(pageIndex, animated)
     }
 
-    private fun goToPageIndex(pageIndex: Int, animated: Boolean, completion: () -> Unit): Boolean {
-        val success = documentFragment.goToPageIndex(pageIndex, animated = animated)
-        if (success) { completion() }
-        return success
+    private fun goToPageIndex(pageIndex: Int, animated: Boolean): Boolean {
+        return documentFragment.goToPageIndex(pageIndex, animated = animated)
     }
 
     // VisualNavigator
@@ -219,9 +254,9 @@ public class PdfNavigatorFragment<S : Configurable.Settings, P : Configurable.Pr
         get() = requireView()
 
     @ExperimentalReadiumApi
-    override val presentation: StateFlow<OverflowNavigator.Presentation>
+    override val overflow: StateFlow<OverflowableNavigator.Overflow>
         get() = settings.mapStateIn(lifecycleScope) { settings ->
-            pdfEngineProvider.computePresentation(settings)
+            pdfEngineProvider.computeOverflow(settings)
         }
 
     @Deprecated(

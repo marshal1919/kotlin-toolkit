@@ -7,6 +7,8 @@
  * LICENSE file present in the project repository where this source code is maintained.
  */
 
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.r2.shared.publication
 
 import android.os.Parcelable
@@ -14,6 +16,7 @@ import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
 import org.json.JSONArray
 import org.json.JSONObject
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.JSONable
 import org.readium.r2.shared.extensions.optNullableString
 import org.readium.r2.shared.extensions.optPositiveDouble
@@ -25,7 +28,6 @@ import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.logging.WarningLogger
 import org.readium.r2.shared.util.logging.log
 import org.readium.r2.shared.util.mediatype.MediaType
-import org.readium.r2.shared.util.mediatype.MediaTypeRetriever
 
 /**
  * Link Object for the Readium Web Publication Manifest.
@@ -162,7 +164,6 @@ public data class Link(
          */
         public fun fromJSON(
             json: JSONObject?,
-            mediaTypeRetriever: MediaTypeRetriever = MediaTypeRetriever(),
             warnings: WarningLogger? = null
         ): Link? {
             json ?: return null
@@ -170,7 +171,7 @@ public data class Link(
             return Link(
                 href = parseHref(json, warnings) ?: return null,
                 mediaType = json.optNullableString("type")
-                    ?.let { mediaTypeRetriever.retrieve(it) },
+                    ?.let { MediaType(it) },
                 title = json.optNullableString("title"),
                 rels = json.optStringsFromArrayOrSingle("rel").toSet(),
                 properties = Properties.fromJSON(json.optJSONObject("properties")),
@@ -180,12 +181,10 @@ public data class Link(
                 duration = json.optPositiveDouble("duration"),
                 languages = json.optStringsFromArrayOrSingle("language"),
                 alternates = fromJSONArray(
-                    json.optJSONArray("alternate"),
-                    mediaTypeRetriever
+                    json.optJSONArray("alternate")
                 ),
                 children = fromJSONArray(
-                    json.optJSONArray("children"),
-                    mediaTypeRetriever
+                    json.optJSONArray("children")
                 )
             )
         }
@@ -232,13 +231,11 @@ public data class Link(
          */
         public fun fromJSONArray(
             json: JSONArray?,
-            mediaTypeRetriever: MediaTypeRetriever = MediaTypeRetriever(),
             warnings: WarningLogger? = null
         ): List<Link> {
             return json.parseObjects {
                 fromJSON(
                     it as? JSONObject,
-                    mediaTypeRetriever,
                     warnings
                 )
             }
@@ -264,13 +261,13 @@ public data class Link(
  * Returns the first [Link] with the given [href], or null if not found.
  */
 public fun List<Link>.indexOfFirstWithHref(href: Url): Int? =
-    indexOfFirst { it.url() == href }
+    indexOfFirst { it.url().isEquivalent(href) }
         .takeUnless { it == -1 }
 
 /**
  * Finds the first link matching the given HREF.
  */
-public fun List<Link>.firstWithHref(href: Url): Link? = firstOrNull { it.url() == href }
+public fun List<Link>.firstWithHref(href: Url): Link? = firstOrNull { it.url().isEquivalent(href) }
 
 /**
  * Finds the first link with the given relation.

@@ -6,83 +6,73 @@
 
 package org.readium.r2.testapp.domain
 
-import androidx.annotation.StringRes
-import org.readium.r2.shared.UserException
-import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.Error
 import org.readium.r2.shared.util.asset.AssetRetriever
+import org.readium.r2.shared.util.data.ReadError
+import org.readium.r2.streamer.PublicationOpener
 import org.readium.r2.testapp.R
+import org.readium.r2.testapp.utils.UserError
 
-sealed class PublicationError(@StringRes userMessageId: Int) : UserException(userMessageId) {
+sealed class PublicationError(
+    override val message: String,
+    override val cause: Error? = null
+) : Error {
 
-    class Unavailable(val error: Error) : PublicationError(R.string.publication_error_unavailable)
+    class Reading(override val cause: ReadError) :
+        PublicationError(cause.message, cause.cause)
 
-    class NotFound(val error: Error) : PublicationError(R.string.publication_error_not_found)
+    class UnsupportedScheme(cause: Error) :
+        PublicationError(cause.message, cause.cause)
 
-    class OutOfMemory(val error: Error) : PublicationError(R.string.publication_error_out_of_memory)
+    class FormatNotSupported(cause: Error) :
+        PublicationError(cause.message, cause.cause)
 
-    class SchemeNotSupported(val error: Error) : PublicationError(
-        R.string.publication_error_scheme_not_supported
-    )
+    class InvalidPublication(cause: Error) :
+        PublicationError(cause.message, cause.cause)
 
-    class UnsupportedAsset(val error: Error? = null) : PublicationError(
-        R.string.publication_error_unsupported_asset
-    )
+    class Unexpected(cause: Error) :
+        PublicationError(cause.message, cause.cause)
 
-    class InvalidPublication(val error: Error) : PublicationError(
-        R.string.publication_error_invalid_publication
-    )
-
-    class IncorrectCredentials(val error: Error) : PublicationError(
-        R.string.publication_error_incorrect_credentials
-    )
-
-    class Forbidden(val error: Error? = null) : PublicationError(
-        R.string.publication_error_forbidden
-    )
-
-    class Unexpected(val error: Error) : PublicationError(R.string.publication_error_unexpected)
+    fun toUserError(): UserError =
+        when (this) {
+            is InvalidPublication ->
+                UserError(R.string.publication_error_invalid_publication, cause = this)
+            is Unexpected ->
+                UserError(R.string.publication_error_unexpected, cause = this)
+            is FormatNotSupported ->
+                UserError(R.string.publication_error_unsupported_asset, cause = this)
+            is UnsupportedScheme ->
+                UserError(R.string.publication_error_scheme_not_supported, cause = this)
+            is Reading ->
+                cause.toUserError()
+        }
 
     companion object {
 
-        operator fun invoke(error: Publication.OpenError): PublicationError =
+        operator fun invoke(error: AssetRetriever.RetrieveUrlError): PublicationError =
             when (error) {
-                is Publication.OpenError.Forbidden ->
-                    Forbidden(error)
-                is Publication.OpenError.IncorrectCredentials ->
-                    IncorrectCredentials(error)
-                is Publication.OpenError.NotFound ->
-                    NotFound(error)
-                is Publication.OpenError.OutOfMemory ->
-                    OutOfMemory(error)
-                is Publication.OpenError.InvalidAsset ->
-                    InvalidPublication(error)
-                is Publication.OpenError.Unavailable ->
-                    Unavailable(error)
-                is Publication.OpenError.Unknown ->
-                    Unexpected(error)
-                is Publication.OpenError.UnsupportedAsset ->
-                    UnsupportedAsset(error)
+                is AssetRetriever.RetrieveUrlError.Reading ->
+                    Reading(error.cause)
+                is AssetRetriever.RetrieveUrlError.FormatNotSupported ->
+                    FormatNotSupported(error)
+                is AssetRetriever.RetrieveUrlError.SchemeNotSupported ->
+                    UnsupportedScheme(error)
             }
 
-        operator fun invoke(error: AssetRetriever.Error): PublicationError =
+        operator fun invoke(error: AssetRetriever.RetrieveError): PublicationError =
             when (error) {
-                is AssetRetriever.Error.ArchiveFormatNotSupported ->
-                    UnsupportedAsset(error)
-                is AssetRetriever.Error.Forbidden ->
-                    Forbidden(error)
-                is AssetRetriever.Error.NotFound ->
-                    NotFound(error)
-                is AssetRetriever.Error.InvalidAsset ->
-                    InvalidPublication(error)
-                is AssetRetriever.Error.OutOfMemory ->
-                    OutOfMemory(error)
-                is AssetRetriever.Error.SchemeNotSupported ->
-                    SchemeNotSupported(error)
-                is AssetRetriever.Error.Unavailable ->
-                    Unavailable(error)
-                is AssetRetriever.Error.Unknown ->
-                    Unexpected(error)
+                is AssetRetriever.RetrieveError.Reading ->
+                    Reading(error.cause)
+                is AssetRetriever.RetrieveError.FormatNotSupported ->
+                    FormatNotSupported(error)
+            }
+
+        operator fun invoke(error: PublicationOpener.OpenError): PublicationError =
+            when (error) {
+                is PublicationOpener.OpenError.Reading ->
+                    Reading(error.cause)
+                is PublicationOpener.OpenError.FormatNotSupported ->
+                    FormatNotSupported(error)
             }
     }
 }

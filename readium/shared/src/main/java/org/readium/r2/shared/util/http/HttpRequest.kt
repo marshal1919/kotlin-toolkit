@@ -12,6 +12,8 @@ import java.io.Serializable
 import java.net.URLEncoder
 import kotlin.time.Duration
 import org.readium.r2.shared.extensions.toMutable
+import org.readium.r2.shared.util.AbsoluteUrl
+import org.readium.r2.shared.util.toUri
 
 /**
  * Holds the information about an HTTP request performed by an [HttpClient].
@@ -30,7 +32,7 @@ import org.readium.r2.shared.extensions.toMutable
  *        as popping up an authentication dialog.
  */
 public class HttpRequest(
-    public val url: String,
+    public val url: AbsoluteUrl,
     public val method: Method = Method.GET,
     public val headers: Map<String, List<String>> = mapOf(),
     public val body: Body? = null,
@@ -39,6 +41,31 @@ public class HttpRequest(
     public val readTimeout: Duration? = null,
     public val allowUserInteraction: Boolean = false
 ) : Serializable {
+
+    @Deprecated(
+        message = "Provide an instance of `AbsoluteUrl` instead of a string.",
+        replaceWith = ReplaceWith("HttpRequest(AbsoluteUrl(url)!!)"),
+        level = DeprecationLevel.ERROR
+    )
+    public constructor(
+        url: String,
+        method: Method = Method.GET,
+        headers: Map<String, String> = mapOf(),
+        body: Body? = null,
+        extras: Bundle = Bundle(),
+        connectTimeout: Duration? = null,
+        readTimeout: Duration? = null,
+        allowUserInteraction: Boolean = false
+    ) : this(
+        url = AbsoluteUrl(url)!!,
+        method = method,
+        headers = headers.mapValues { (_, value) -> listOf(value) },
+        body = body,
+        extras = extras,
+        connectTimeout = connectTimeout,
+        readTimeout = readTimeout,
+        allowUserInteraction = allowUserInteraction
+    )
 
     /** Supported HTTP methods. */
     public enum class Method : Serializable {
@@ -66,12 +93,12 @@ public class HttpRequest(
         buildUpon().apply(build).build()
 
     public companion object {
-        public operator fun invoke(url: String, build: Builder.() -> Unit): HttpRequest =
+        public operator fun invoke(url: AbsoluteUrl, build: Builder.() -> Unit): HttpRequest =
             Builder(url).apply(build).build()
     }
 
     public class Builder(
-        url: String,
+        public val url: AbsoluteUrl,
         public var method: Method = Method.GET,
         public var headers: MutableMap<String, MutableList<String>> = mutableMapOf(),
         public var body: Body? = null,
@@ -81,11 +108,7 @@ public class HttpRequest(
         public var allowUserInteraction: Boolean = false
     ) {
 
-        public var url: String
-            get() = uriBuilder.build().toString()
-            set(value) { uriBuilder = Uri.parse(value).buildUpon() }
-
-        private var uriBuilder: Uri.Builder = Uri.parse(url).buildUpon()
+        private var uriBuilder: Uri.Builder = url.toUri().buildUpon()
 
         public fun appendQueryParameter(key: String, value: String?): Builder {
             if (value != null) {

@@ -7,6 +7,8 @@
  * LICENSE file present in the project repository where this source code is maintained.
  */
 
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.r2.shared.publication
 
 import android.os.Parcelable
@@ -15,14 +17,15 @@ import kotlinx.parcelize.WriteWith
 import org.json.JSONArray
 import org.json.JSONObject
 import org.readium.r2.shared.DelicateReadiumApi
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.JSONable
 import org.readium.r2.shared.extensions.*
 import org.readium.r2.shared.toJSON
 import org.readium.r2.shared.util.Url
+import org.readium.r2.shared.util.fromLegacyHref
 import org.readium.r2.shared.util.logging.WarningLogger
 import org.readium.r2.shared.util.logging.log
 import org.readium.r2.shared.util.mediatype.MediaType
-import org.readium.r2.shared.util.mediatype.MediaTypeRetriever
 
 /**
  * Represents a precise location in a publication in a format that can be stored and shared.
@@ -189,6 +192,20 @@ public data class Locator(
         putIfNotEmpty("text", text)
     }
 
+    @Suppress("UNUSED_PARAMETER")
+    @Deprecated(
+        "Provide a `Url` and `MediaType` instances.",
+        ReplaceWith("Locator(href = Url(href)!!, mediaType = MediaType(type)!!"),
+        level = DeprecationLevel.ERROR
+    )
+    public constructor(
+        href: String,
+        type: String,
+        title: String? = null,
+        locations: Locations = Locations(),
+        text: Text = Text()
+    ) : this(Url("#")!!, MediaType.BINARY)
+
     @Deprecated(
         "Use [mediaType.toString()] instead",
         ReplaceWith("mediaType.toString()"),
@@ -203,10 +220,9 @@ public data class Locator(
          */
         public fun fromJSON(
             json: JSONObject?,
-            mediaTypeRetriever: MediaTypeRetriever = MediaTypeRetriever(),
             warnings: WarningLogger? = null
         ): Locator? =
-            fromJSON(json, mediaTypeRetriever, warnings, withLegacyHref = false)
+            fromJSON(json, warnings, withLegacyHref = false)
 
         /**
          * Creates a [Locator] from its legacy JSON representation.
@@ -217,15 +233,13 @@ public data class Locator(
         @DelicateReadiumApi
         public fun fromLegacyJSON(
             json: JSONObject?,
-            mediaTypeRetriever: MediaTypeRetriever = MediaTypeRetriever(),
             warnings: WarningLogger? = null
         ): Locator? =
-            fromJSON(json, mediaTypeRetriever, warnings, withLegacyHref = true)
+            fromJSON(json, warnings, withLegacyHref = true)
 
         @OptIn(DelicateReadiumApi::class)
         private fun fromJSON(
             json: JSONObject?,
-            mediaTypeRetriever: MediaTypeRetriever = MediaTypeRetriever(),
             warnings: WarningLogger? = null,
             withLegacyHref: Boolean = false
         ): Locator? {
@@ -254,7 +268,7 @@ public data class Locator(
 
             return Locator(
                 href = url,
-                mediaType = mediaTypeRetriever.retrieve(mediaType),
+                mediaType = mediaType,
                 title = json.optNullableString("title"),
                 locations = Locations.fromJSON(json.optJSONObject("locations")),
                 text = Text.fromJSON(json.optJSONObject("text"))
@@ -263,10 +277,9 @@ public data class Locator(
 
         public fun fromJSONArray(
             json: JSONArray?,
-            mediaTypeRetriever: MediaTypeRetriever = MediaTypeRetriever(),
             warnings: WarningLogger? = null
         ): List<Locator> {
-            return json.parseObjects { fromJSON(it as? JSONObject, mediaTypeRetriever, warnings) }
+            return json.parseObjects { fromJSON(it as? JSONObject, warnings) }
         }
     }
 }
@@ -341,19 +354,16 @@ public data class LocatorCollection(
 
         public fun fromJSON(
             json: JSONObject?,
-            mediaTypeRetriever: MediaTypeRetriever = MediaTypeRetriever(),
             warnings: WarningLogger? = null
         ): LocatorCollection {
             return LocatorCollection(
                 metadata = Metadata.fromJSON(json?.optJSONObject("metadata"), warnings),
                 links = Link.fromJSONArray(
                     json?.optJSONArray("links"),
-                    mediaTypeRetriever,
                     warnings = warnings
                 ),
                 locators = Locator.fromJSONArray(
                     json?.optJSONArray("locators"),
-                    mediaTypeRetriever,
                     warnings
                 )
             )

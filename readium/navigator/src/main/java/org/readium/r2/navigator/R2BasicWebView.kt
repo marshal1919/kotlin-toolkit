@@ -4,25 +4,21 @@
  * available in the top-level LICENSE file of the project.
  */
 
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.r2.navigator
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.graphics.PointF
 import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Build
-import android.text.Html
 import android.util.AttributeSet
 import android.view.*
 import android.webkit.URLUtil
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
-import android.widget.ImageButton
-import android.widget.ListPopupWindow
-import android.widget.PopupWindow
-import android.widget.TextView
 import androidx.annotation.RequiresApi
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
@@ -46,21 +42,26 @@ import org.readium.r2.shared.extensions.tryOrLog
 import org.readium.r2.shared.extensions.tryOrNull
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
+import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.Url
-import org.readium.r2.shared.util.getOrThrow
+import org.readium.r2.shared.util.data.decodeString
+import org.readium.r2.shared.util.flatMap
 import org.readium.r2.shared.util.resource.Resource
-import org.readium.r2.shared.util.resource.readAsString
 import org.readium.r2.shared.util.toUrl
 import org.readium.r2.shared.util.use
 import timber.log.Timber
 
-@OptIn(ExperimentalDecorator::class, ExperimentalReadiumApi::class)
+@OptIn(ExperimentalReadiumApi::class)
 internal open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(context, attrs) {
 
     interface Listener {
         val readingProgression: ReadingProgression
-        fun onResourceLoaded(link: Link?, webView: R2BasicWebView, url: String?) {}
-        fun onPageLoaded() {}
+
+        /** Called when the resource content is loaded in the web view. */
+        fun onResourceLoaded(webView: R2BasicWebView, link: Link) {}
+
+        /** Called when the target page of the resource is loaded in the web view. */
+        fun onPageLoaded(webView: R2BasicWebView, link: Link) {}
         fun onPageChanged(pageIndex: Int, totalPages: Int, url: String) {}
         fun onPageEnded(end: Boolean) {}
         fun onTap(point: PointF): Boolean = false
@@ -70,8 +71,8 @@ internal open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebV
         fun onKey(event: KeyEvent): Boolean = false
         fun onDecorationActivated(id: DecorationId, group: String, rect: RectF, point: PointF): Boolean = false
         fun onProgressionChanged() {}
-        fun goForward(animated: Boolean = false, completion: () -> Unit = {}): Boolean = false
-        fun goBackward(animated: Boolean = false, completion: () -> Unit = {}): Boolean = false
+        fun goForward(animated: Boolean = false): Boolean = false
+        fun goBackward(animated: Boolean = false): Boolean = false
         fun onWordSelected(word:String): Boolean = false
 
         /**
@@ -87,6 +88,9 @@ internal open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebV
 
         @InternalReadiumApi
         fun shouldInterceptRequest(webView: WebView, request: WebResourceRequest): WebResourceResponse? = null
+
+        @InternalReadiumApi
+        fun shouldFollowFootnoteLink(url: AbsoluteUrl, context: HyperlinkNavigator.FootnoteContext): Boolean
 
         @InternalReadiumApi
         fun resourceAtUrl(url: Url): Resource? = null
@@ -114,9 +118,8 @@ internal open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebV
     }
 
     var listener: Listener? = null
-    internal var preferences: SharedPreferences? = null
 
-    var resourceUrl: Url? = null
+    var resourceUrl: AbsoluteUrl? = null
 
     internal val scrollModeFlow = MutableStateFlow(false)
 
@@ -128,6 +131,12 @@ internal open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebV
     var callback: OnOverScrolledCallback? = null
 
     private val uiScope = CoroutineScope(Dispatchers.Main)
+
+    /*
+     * Url already handled by listener.shouldFollowFootnoteLink,
+     * Tries to ignore the matching shouldOverrideUrlLoading call.
+     */
+    private var urlNotToOverrideLoading: AbsoluteUrl? = null
 
     init {
         setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
@@ -180,6 +189,13 @@ internal open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebV
     }
 
     override fun onOverScrolled(scrollX: Int, scrollY: Int, clampedX: Boolean, clampedY: Boolean) {
+        // Workaround addressing a bug in the Android WebView where the viewport is scrolled while
+        // dragging the text selection handles.
+        // See https://github.com/readium/kotlin-toolkit/issues/325
+        if (isSelecting) {
+            return
+        }
+
         if (callback != null) {
             callback?.onOverScrolled(scrollX, scrollY, clampedX, clampedY)
         }
@@ -287,12 +303,10 @@ internal open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebV
             return false
         }
 
-        // FIXME: Let the app handle footnotes.
-
         // We ignore taps on interactive element, unless it's an element we handle ourselves such as
         // pop-up footnotes.
         if (event.interactiveElement != null) {
-            return handleFootnote(event.targetElement)
+            return handleFootnote(event.interactiveElement)
         }
 
         return runBlocking(uiScope.coroutineContext) { listener?.onTap(event.point) ?: false }
@@ -354,63 +368,38 @@ internal open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebV
 
         val id = href.fragment ?: return false
 
-        val absoluteUrl = resourceUrl.resolve(href).removeFragment()
+        val absoluteUrl = resourceUrl.resolve(href)
+
+        val absoluteUrlWithoutFragment = absoluteUrl.removeFragment()
 
         val aside = runBlocking {
             tryOrLog {
-                listener?.resourceAtUrl(absoluteUrl)
+                listener?.resourceAtUrl(absoluteUrlWithoutFragment)
                     ?.use { res ->
-                        res.readAsString()
+                        res.read()
+                            .flatMap { it.decodeString() }
                             .map { Jsoup.parse(it) }
-                            .getOrThrow()
+                            .getOrNull()
                     }
                     ?.select("#$id")
                     ?.first()?.html()
             }
-        } ?: return false
+        }?.takeIf { it.isNotBlank() }
+            ?: return false
 
         val safe = Jsoup.clean(aside, Safelist.relaxed())
-
-        // Initialize a new instance of LayoutInflater service
-        val inflater = context.getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater
-
-        // Inflate the custom layout/view
-        val customView = inflater.inflate(R.layout.readium_navigator_popup_footnote, null)
-
-        // Initialize a new instance of popup window
-        val mPopupWindow = PopupWindow(
-            customView,
-            ListPopupWindow.WRAP_CONTENT,
-            ListPopupWindow.WRAP_CONTENT
+        val context = HyperlinkNavigator.FootnoteContext(
+            noteContent = safe
         )
-        mPopupWindow.isOutsideTouchable = true
-        mPopupWindow.isFocusable = true
 
-        // Set an elevation value for popup window
-        // Call requires API level 21
-        mPopupWindow.elevation = 5.0f
+        val shouldFollowLink = listener?.shouldFollowFootnoteLink(absoluteUrl, context) ?: true
 
-        val textView = customView.findViewById(R.id.footnote) as TextView
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            textView.text = Html.fromHtml(safe, Html.FROM_HTML_MODE_COMPACT)
-        } else {
-            @Suppress("DEPRECATION")
-            textView.text = Html.fromHtml(safe)
+        if (shouldFollowLink) {
+            urlNotToOverrideLoading = absoluteUrl
         }
 
-        // Get a reference for the custom view close button
-        val closeButton = customView.findViewById(R.id.ib_close) as ImageButton
-
-        // Set a click listener for the popup window close button
-        closeButton.setOnClickListener {
-            // Dismiss the popup window
-            mPopupWindow.dismiss()
-        }
-
-        // Finally, show the popup window at the center location of root relative layout
-        mPopupWindow.showAtLocation(this, Gravity.CENTER, 0, 0)
-
-        return true
+        // Consume event if the link should not be followed.
+        return !shouldFollowLink
     }
 
     @android.webkit.JavascriptInterface
@@ -532,9 +521,9 @@ internal open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebV
         runJavaScript("readium.scrollToPosition(\"$progression\");")
     }
 
-    suspend fun scrollToText(text: Locator.Text): Boolean {
-        val json = text.toJSON().toString()
-        return runJavaScriptSuspend("readium.scrollToText($json);").toBoolean()
+    suspend fun scrollToLocator(locator: Locator): Boolean {
+        val json = locator.toJSON().toString()
+        return runJavaScriptSuspend("readium.scrollToLocator($json);").toBoolean()
     }
 
     fun setScrollMode(scrollMode: Boolean) {
@@ -605,9 +594,15 @@ internal open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebV
     }
 
     internal fun shouldOverrideUrlLoading(request: WebResourceRequest): Boolean {
-        if (resourceUrl == request.url.toUrl()) return false
+        val requestUrl = request.url.toUrl() ?: return false
 
-        return listener?.shouldOverrideUrlLoading(this, request) ?: false
+        // FIXME: I doubt this can work well. hasGesture considers itself unreliable.
+        return if (urlNotToOverrideLoading?.isEquivalent(requestUrl) == true && request.hasGesture()) {
+            urlNotToOverrideLoading = null
+            false
+        } else {
+            listener?.shouldOverrideUrlLoading(this, request) ?: false
+        }
     }
 
     internal fun shouldInterceptRequest(webView: WebView, request: WebResourceRequest): WebResourceResponse? {

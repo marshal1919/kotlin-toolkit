@@ -4,6 +4,8 @@
  * available in the top-level LICENSE file of the project.
  */
 
+@file:Suppress("DEPRECATION")
+
 package org.readium.r2.navigator.media
 
 import android.app.Notification
@@ -17,7 +19,6 @@ import android.os.Process
 import android.os.ResultReceiver
 import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.session.MediaSessionCompat
-import android.widget.Toast
 import androidx.core.app.ServiceCompat
 import androidx.core.os.BundleCompat
 import androidx.media.MediaBrowserServiceCompat
@@ -25,17 +26,18 @@ import kotlin.reflect.KMutableProperty0
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
-import org.readium.r2.navigator.ExperimentalAudiobook
 import org.readium.r2.navigator.extensions.let
 import org.readium.r2.navigator.extensions.splitAt
 import org.readium.r2.navigator.media.extensions.publicationId
+import org.readium.r2.shared.DelicateReadiumApi
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.PublicationId
 import org.readium.r2.shared.publication.services.cover
 import org.readium.r2.shared.util.Url
-import org.readium.r2.shared.util.resource.Resource
+import org.readium.r2.shared.util.data.ReadError
 import timber.log.Timber
 
 /**
@@ -46,8 +48,11 @@ import timber.log.Timber
  *
  * See https://developer.android.com/guide/topics/media-apps/audio-app/building-a-mediabrowserservice
  */
-@ExperimentalAudiobook
 @OptIn(ExperimentalCoroutinesApi::class)
+@Deprecated(
+    "Use the new AudioNavigator from the readium-navigator-media-audio module. This class will be removed in a future 3.x release."
+)
+@InternalReadiumApi
 public open class MediaService : MediaBrowserServiceCompat(), CoroutineScope by MainScope() {
 
     /**
@@ -106,9 +111,7 @@ public open class MediaService : MediaBrowserServiceCompat(), CoroutineScope by 
      *
      * You should present the exception to the user.
      */
-    public open fun onResourceLoadFailed(link: Link, error: Resource.Exception) {
-        Toast.makeText(this, error.getUserMessage(this), Toast.LENGTH_LONG).show()
-    }
+    public open fun onResourceLoadFailed(link: Link, error: ReadError) {}
 
     /**
      * Override to control which app can access the MediaSession through the MediaBrowserService.
@@ -139,6 +142,7 @@ public open class MediaService : MediaBrowserServiceCompat(), CoroutineScope by 
     private var notificationId: Int? = null
     private var notification: Notification? = null
 
+    @OptIn(DelicateReadiumApi::class)
     private val mediaPlayerListener = object : MediaPlayer.Listener {
 
         /**
@@ -166,7 +170,7 @@ public open class MediaService : MediaBrowserServiceCompat(), CoroutineScope by 
                     ?.let { navigator.publication.linkWithHref(it) }
                     ?.let { navigator.publication.locatorFromLink(it) }
 
-            if (locator != null && href != null && locator.href != href) {
+            if (locator != null && href != null && locator.href.isEquivalent(href)) {
                 Timber.e(
                     "Ambiguous playback location provided. HREF `$href` doesn't match locator $locator."
                 )
@@ -214,7 +218,7 @@ public open class MediaService : MediaBrowserServiceCompat(), CoroutineScope by 
             this@MediaService.onPlayerStopped()
         }
 
-        override fun onResourceLoadFailed(link: Link, error: Resource.Exception) {
+        override fun onResourceLoadFailed(link: Link, error: ReadError) {
             this@MediaService.onResourceLoadFailed(link, error)
         }
     }

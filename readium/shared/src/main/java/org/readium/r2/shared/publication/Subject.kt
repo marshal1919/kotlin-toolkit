@@ -7,19 +7,21 @@
  * LICENSE file present in the project repository where this source code is maintained.
  */
 
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.r2.shared.publication
 
 import android.os.Parcelable
 import kotlinx.parcelize.Parcelize
 import org.json.JSONArray
 import org.json.JSONObject
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.JSONable
 import org.readium.r2.shared.extensions.optNullableString
 import org.readium.r2.shared.extensions.parseObjects
 import org.readium.r2.shared.extensions.putIfNotEmpty
 import org.readium.r2.shared.util.logging.WarningLogger
 import org.readium.r2.shared.util.logging.log
-import org.readium.r2.shared.util.mediatype.MediaTypeRetriever
 
 /**
  * https://github.com/readium/webpub-manifest/tree/master/contexts/default#subjects
@@ -76,7 +78,6 @@ public data class Subject(
          */
         public fun fromJSON(
             json: Any?,
-            mediaTypeRetriever: MediaTypeRetriever = MediaTypeRetriever(),
             warnings: WarningLogger? = null
         ): Subject? {
             json ?: return null
@@ -99,7 +100,6 @@ public data class Subject(
                 code = jsonObject.optNullableString("code"),
                 links = Link.fromJSONArray(
                     jsonObject.optJSONArray("links"),
-                    mediaTypeRetriever,
                     warnings
                 )
             )
@@ -112,7 +112,6 @@ public data class Subject(
          */
         public fun fromJSONArray(
             json: Any?,
-            mediaTypeRetriever: MediaTypeRetriever = MediaTypeRetriever(),
             warnings: WarningLogger? = null
         ): List<Subject> {
             return when (json) {
@@ -120,13 +119,12 @@ public data class Subject(
                     listOf(json).mapNotNull {
                         fromJSON(
                             it,
-                            mediaTypeRetriever,
                             warnings
                         )
                     }
 
                 is JSONArray ->
-                    json.parseObjects { fromJSON(it, mediaTypeRetriever, warnings) }
+                    json.parseObjects { fromJSON(it, warnings) }
 
                 else -> emptyList()
             }

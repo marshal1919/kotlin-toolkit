@@ -9,72 +9,28 @@ package org.readium.r2.testapp
 import android.content.Context
 import android.view.View
 import org.readium.adapter.pdfium.document.PdfiumDocumentFactory
-import org.readium.r2.lcp.LcpException
+import org.readium.r2.lcp.LcpError
 import org.readium.r2.lcp.LcpService
 import org.readium.r2.lcp.auth.LcpDialogAuthentication
 import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.shared.ExperimentalReadiumApi
-import org.readium.r2.shared.publication.protection.ContentProtectionSchemeRetriever
+import org.readium.r2.shared.util.DebugError
 import org.readium.r2.shared.util.Try
 import org.readium.r2.shared.util.asset.AssetRetriever
-import org.readium.r2.shared.util.downloads.android.AndroidDownloadManager
 import org.readium.r2.shared.util.http.DefaultHttpClient
-import org.readium.r2.shared.util.http.HttpResourceFactory
-import org.readium.r2.shared.util.mediatype.FormatRegistry
-import org.readium.r2.shared.util.mediatype.MediaTypeRetriever
-import org.readium.r2.shared.util.resource.CompositeArchiveFactory
-import org.readium.r2.shared.util.resource.CompositeResourceFactory
-import org.readium.r2.shared.util.resource.ContentResourceFactory
-import org.readium.r2.shared.util.resource.DirectoryContainerFactory
-import org.readium.r2.shared.util.resource.FileResourceFactory
-import org.readium.r2.shared.util.resource.FileZipArchiveFactory
-import org.readium.r2.shared.util.zip.StreamingZipArchiveFactory
-import org.readium.r2.streamer.PublicationFactory
+import org.readium.r2.streamer.PublicationOpener
+import org.readium.r2.streamer.parser.DefaultPublicationParser
 
 /**
  * Holds the shared Readium objects and services used by the app.
  */
 class Readium(context: Context) {
 
-    private val mediaTypeRetriever = MediaTypeRetriever()
+    val httpClient =
+        DefaultHttpClient()
 
-    val formatRegistry = FormatRegistry()
-
-    val httpClient = DefaultHttpClient(
-        mediaTypeRetriever = mediaTypeRetriever
-    )
-
-    private val archiveFactory = CompositeArchiveFactory(
-        FileZipArchiveFactory(mediaTypeRetriever),
-        StreamingZipArchiveFactory(mediaTypeRetriever)
-    )
-
-    private val resourceFactory = CompositeResourceFactory(
-        FileResourceFactory(mediaTypeRetriever),
-        CompositeResourceFactory(
-            ContentResourceFactory(context.contentResolver),
-            HttpResourceFactory(httpClient)
-        )
-    )
-
-    private val containerFactory = DirectoryContainerFactory(
-        mediaTypeRetriever
-    )
-
-    val assetRetriever = AssetRetriever(
-        mediaTypeRetriever,
-        resourceFactory,
-        containerFactory,
-        archiveFactory,
-        context.contentResolver
-    )
-
-    val downloadManager = AndroidDownloadManager(
-        context = context,
-        mediaTypeRetriever = mediaTypeRetriever,
-        formatRegistry = formatRegistry,
-        destStorage = AndroidDownloadManager.Storage.App
-    )
+    val assetRetriever =
+        AssetRetriever(context.contentResolver, httpClient)
 
     /**
      * The LCP service decrypts LCP-protected publication and acquire publications from a
@@ -82,11 +38,9 @@ class Readium(context: Context) {
      */
     val lcpService = LcpService(
         context,
-        assetRetriever,
-        mediaTypeRetriever,
-        downloadManager
+        assetRetriever
     )?.let { Try.success(it) }
-        ?: Try.failure(LcpException.Unknown(Exception("liblcp is missing on the classpath")))
+        ?: Try.failure(LcpError.Unknown(DebugError("liblcp is missing on the classpath")))
 
     private val lcpDialogAuthentication = LcpDialogAuthentication()
 
@@ -94,22 +48,18 @@ class Readium(context: Context) {
         lcpService.getOrNull()?.contentProtection(lcpDialogAuthentication)
     )
 
-    val protectionRetriever = ContentProtectionSchemeRetriever(
-        contentProtections,
-        mediaTypeRetriever
-    )
-
     /**
-     * The PublicationFactory is used to parse and open publications.
+     * The PublicationFactory is used to open publications.
      */
-    val publicationFactory = PublicationFactory(
-        context,
-        contentProtections = contentProtections,
-        formatRegistry = formatRegistry,
-        mediaTypeRetriever = mediaTypeRetriever,
-        httpClient = httpClient,
-        // Only required if you want to support PDF files using the PDFium adapter.
-        pdfFactory = PdfiumDocumentFactory(context)
+    val publicationOpener = PublicationOpener(
+        publicationParser = DefaultPublicationParser(
+            context,
+            assetRetriever = assetRetriever,
+            httpClient = httpClient,
+            // Only required if you want to support PDF files using the PDFium adapter.
+            pdfFactory = PdfiumDocumentFactory(context)
+        ),
+        contentProtections = contentProtections
     )
 
     fun onLcpDialogAuthenticationParentAttached(view: View) {

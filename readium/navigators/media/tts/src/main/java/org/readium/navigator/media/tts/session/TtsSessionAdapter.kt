@@ -34,6 +34,7 @@ import androidx.media3.common.util.Clock
 import androidx.media3.common.util.ListenerSet
 import androidx.media3.common.util.Size
 import androidx.media3.common.util.Util
+import java.lang.Error
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.StateFlow
@@ -42,7 +43,9 @@ import kotlinx.coroutines.flow.onEach
 import org.readium.navigator.media.tts.TtsEngine
 import org.readium.navigator.media.tts.TtsPlayer
 import org.readium.r2.shared.ExperimentalReadiumApi
-import org.readium.r2.shared.util.resource.Resource
+import org.readium.r2.shared.util.ErrorException
+import org.readium.r2.shared.util.data.ReadError
+import org.readium.r2.shared.util.http.HttpError
 
 /**
  * Adapts the [TtsPlayer] to media3 [Player] interface.
@@ -262,7 +265,7 @@ internal class TtsSessionAdapter<E : TtsEngine.Error>(
     }
 
     override fun getPlayerError(): PlaybackException? {
-        return (lastPlayback.state as? TtsPlayer.State.Error)?.toPlaybackException()
+        return (lastPlayback.state as? TtsPlayer.State.Failure)?.toPlaybackException()
     }
 
     override fun play() {
@@ -769,20 +772,24 @@ internal class TtsSessionAdapter<E : TtsEngine.Error>(
         streamVolumeManager.setMuted(muted)
     }
 
+    override fun setAudioAttributes(audioAttributes: AudioAttributes, handleAudioFocus: Boolean) {
+        audioFocusManager.setAudioAttributes(audioAttributes)
+    }
+
     private fun notifyListenersPlaybackChanged(
         previousPlaybackInfo: TtsPlayer.Playback,
         playbackInfo: TtsPlayer.Playback
         // playWhenReadyChangeReason: @Player.PlayWhenReadyChangeReason Int,
     ) {
-        if (previousPlaybackInfo.state as? TtsPlayer.State.Error != playbackInfo.state as? Error) {
+        if (previousPlaybackInfo.state as? TtsPlayer.State.Failure != playbackInfo.state as? Error) {
             listeners.queueEvent(
                 EVENT_PLAYER_ERROR
             ) { listener: Listener ->
                 listener.onPlayerErrorChanged(
-                    (playbackInfo.state as? TtsPlayer.State.Error)?.toPlaybackException()
+                    (playbackInfo.state as? TtsPlayer.State.Failure)?.toPlaybackException()
                 )
             }
-            if (playbackInfo.state is TtsPlayer.State.Error) {
+            if (playbackInfo.state is TtsPlayer.State.Failure) {
                 listeners.queueEvent(
                     EVENT_PLAYER_ERROR
                 ) { listener: Listener ->
@@ -912,41 +919,35 @@ internal class TtsSessionAdapter<E : TtsEngine.Error>(
     private val TtsPlayer.State.playerCode get() = when (this) {
         TtsPlayer.State.Ready -> STATE_READY
         TtsPlayer.State.Ended -> STATE_ENDED
-        is TtsPlayer.State.Error -> STATE_IDLE
+        is TtsPlayer.State.Failure -> STATE_IDLE
     }
 
     @Suppress("Unchecked_cast")
-    private fun TtsPlayer.State.Error.toPlaybackException(): PlaybackException = when (this) {
-        is TtsPlayer.State.Error.EngineError<*> -> mapEngineError(error as E)
-        is TtsPlayer.State.Error.ContentError -> when (exception) {
-            is Resource.Exception.BadRequest ->
-                PlaybackException(exception.message, exception.cause, ERROR_CODE_IO_BAD_HTTP_STATUS)
-            is Resource.Exception.NotFound ->
-                PlaybackException(exception.message, exception.cause, ERROR_CODE_IO_BAD_HTTP_STATUS)
-            is Resource.Exception.Forbidden ->
-                PlaybackException(
-                    exception.message,
-                    exception.cause,
-                    ERROR_CODE_DRM_DISALLOWED_OPERATION
-                )
-            is Resource.Exception.Unavailable ->
-                PlaybackException(
-                    exception.message,
-                    exception.cause,
-                    ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
-                )
-            is Resource.Exception.Offline ->
-                PlaybackException(
-                    exception.message,
-                    exception.cause,
-                    ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
-                )
-            is Resource.Exception.OutOfMemory ->
-                PlaybackException(exception.message, exception.cause, ERROR_CODE_UNSPECIFIED)
-            is Resource.Exception.Other ->
-                PlaybackException(exception.message, exception.cause, ERROR_CODE_UNSPECIFIED)
-            else ->
-                PlaybackException(exception.message, exception.cause, ERROR_CODE_UNSPECIFIED)
+    private fun TtsPlayer.State.Failure.toPlaybackException(): PlaybackException = when (this) {
+        is TtsPlayer.State.Failure.Engine<*> -> {
+            mapEngineError(error as E)
+        }
+        is TtsPlayer.State.Failure.Content -> {
+            val errorCode = when (error) {
+                is ReadError.Access ->
+                    when (error.cause) {
+                        is HttpError.ErrorResponse ->
+                            ERROR_CODE_IO_BAD_HTTP_STATUS
+                        is HttpError.Timeout ->
+                            ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
+                        is HttpError.Unreachable ->
+                            ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
+                        else -> ERROR_CODE_UNSPECIFIED
+                    }
+
+                else ->
+                    ERROR_CODE_UNSPECIFIED
+            }
+            PlaybackException(
+                error.message,
+                error.cause?.let { ErrorException(it) },
+                errorCode
+            )
         }
     }
 }

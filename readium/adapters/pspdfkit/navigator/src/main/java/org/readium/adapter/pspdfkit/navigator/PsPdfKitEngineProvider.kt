@@ -4,12 +4,14 @@
  * available in the top-level LICENSE file of the project.
  */
 
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.adapter.pspdfkit.navigator
 
 import android.graphics.PointF
 import com.pspdfkit.configuration.PdfConfiguration
-import org.readium.r2.navigator.OverflowNavigator
-import org.readium.r2.navigator.SimplePresentation
+import org.readium.r2.navigator.OverflowableNavigator
+import org.readium.r2.navigator.SimpleOverflow
 import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.navigator.pdf.PdfDocumentFragmentInput
 import org.readium.r2.navigator.pdf.PdfEngineProvider
@@ -17,10 +19,11 @@ import org.readium.r2.navigator.preferences.Axis
 import org.readium.r2.navigator.util.SingleFragmentFactory
 import org.readium.r2.navigator.util.createFragmentFactory
 import org.readium.r2.shared.ExperimentalReadiumApi
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.publication.Metadata
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.Url
-import org.readium.r2.shared.util.resource.Resource
+import org.readium.r2.shared.util.data.ReadError
 
 /**
  * Main component to use the PDF navigator with PSPDFKit.
@@ -50,7 +53,7 @@ public class PsPdfKitEngineProvider(
                 initialPageIndex = input.pageIndex,
                 initialSettings = input.settings,
                 listener = object : PsPdfKitDocumentFragment.Listener {
-                    override fun onResourceLoadFailed(href: Url, error: Resource.Exception) {
+                    override fun onResourceLoadFailed(href: Url, error: ReadError) {
                         input.navigatorListener?.onResourceLoadFailed(href, error)
                     }
 
@@ -68,8 +71,8 @@ public class PsPdfKitEngineProvider(
         return settingsPolicy.settings(preferences)
     }
 
-    override fun computePresentation(settings: PsPdfKitSettings): OverflowNavigator.Presentation =
-        SimplePresentation(
+    override fun computeOverflow(settings: PsPdfKitSettings): OverflowableNavigator.Overflow =
+        SimpleOverflow(
             readingProgression = settings.readingProgression,
             scroll = settings.scroll,
             axis = if (settings.scroll) settings.scrollAxis else Axis.HORIZONTAL

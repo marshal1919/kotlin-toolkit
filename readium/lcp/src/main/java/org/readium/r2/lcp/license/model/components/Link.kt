@@ -8,17 +8,20 @@
  * LICENSE file present in the project repository where this source code is maintained.
  */
 
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.r2.lcp.license.model.components
 
 import org.json.JSONObject
+import org.readium.r2.lcp.LcpError
 import org.readium.r2.lcp.LcpException
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.extensions.optNullableInt
 import org.readium.r2.shared.extensions.optNullableString
 import org.readium.r2.shared.extensions.optStringsFromArrayOrSingle
 import org.readium.r2.shared.publication.Href
 import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.mediatype.MediaType
-import org.readium.r2.shared.util.mediatype.MediaTypeRetriever
 
 public data class Link(
     val href: Href,
@@ -32,8 +35,7 @@ public data class Link(
 
     public companion object {
         public operator fun invoke(
-            json: JSONObject,
-            mediaTypeRetriever: MediaTypeRetriever = MediaTypeRetriever()
+            json: JSONObject
         ): Link {
             val href = json.optNullableString("href")
                 ?.let {
@@ -42,16 +44,16 @@ public data class Link(
                         templated = json.optBoolean("templated", false)
                     )
                 }
-                ?: throw LcpException.Parsing.Link
+                ?: throw LcpException(LcpError.Parsing.Link)
 
             return Link(
                 href = href,
                 mediaType = json.optNullableString("type")
-                    ?.let { mediaTypeRetriever.retrieve(it) },
+                    ?.let { MediaType(it) },
                 title = json.optNullableString("title"),
                 rels = json.optStringsFromArrayOrSingle("rel").toSet()
                     .takeIf { it.isNotEmpty() }
-                    ?: throw LcpException.Parsing.Link,
+                    ?: throw LcpException(LcpError.Parsing.Link),
                 profile = json.optNullableString("profile"),
                 length = json.optNullableInt("length"),
                 hash = json.optNullableString("hash")

@@ -7,14 +7,15 @@
  * LICENSE file present in the project repository where this source code is maintained.
  */
 
-@file:OptIn(ExperimentalReadiumApi::class)
+@file:OptIn(ExperimentalReadiumApi::class, InternalReadiumApi::class)
 
 package org.readium.r2.opds
 
-import org.joda.time.DateTime
+import java.net.URL
 import org.json.JSONArray
 import org.json.JSONObject
 import org.readium.r2.shared.ExperimentalReadiumApi
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.opds.Facet
 import org.readium.r2.shared.opds.Feed
 import org.readium.r2.shared.opds.Group
@@ -24,13 +25,15 @@ import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Manifest
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.normalizeHrefsToBase
+import org.readium.r2.shared.util.AbsoluteUrl
+import org.readium.r2.shared.util.ErrorException
+import org.readium.r2.shared.util.Instant
 import org.readium.r2.shared.util.Try
 import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.http.DefaultHttpClient
 import org.readium.r2.shared.util.http.HttpClient
 import org.readium.r2.shared.util.http.HttpRequest
 import org.readium.r2.shared.util.http.fetchWithDecoder
-import org.readium.r2.shared.util.mediatype.MediaTypeRetriever
 
 public enum class OPDS2ParserError {
     MetadataNotFound,
@@ -46,18 +49,19 @@ public class OPDS2Parser {
 
         public suspend fun parseUrlString(
             url: String,
-            client: HttpClient = DefaultHttpClient(MediaTypeRetriever())
+            client: HttpClient = DefaultHttpClient()
         ): Try<ParseData, Exception> =
-            parseRequest(HttpRequest(url), client)
+            AbsoluteUrl(url)
+                ?.let { parseRequest(HttpRequest(it), client) }
+                ?: run { Try.failure(Exception("Not an absolute URL.")) }
 
         public suspend fun parseRequest(
             request: HttpRequest,
-            client: HttpClient = DefaultHttpClient(MediaTypeRetriever())
+            client: HttpClient = DefaultHttpClient()
         ): Try<ParseData, Exception> {
             return client.fetchWithDecoder(request) {
-                val url = Url(request.url) ?: throw Exception("Invalid URL")
-                this.parse(it.body, url)
-            }
+                this.parse(it.body, request.url)
+            }.mapFailure { ErrorException(it) }
         }
 
         public fun parse(jsonData: ByteArray, url: Url): ParseData {
@@ -74,6 +78,15 @@ public class OPDS2Parser {
                 )
             }
         }
+
+        @Deprecated(
+            "Provide an instance of `Url` instead",
+            ReplaceWith("parse(jsonData, url.toUrl()!!)"),
+            DeprecationLevel.ERROR
+        )
+        @Suppress("UNUSED_PARAMETER")
+        public fun parse(jsonData: ByteArray, url: URL): ParseData =
+            throw NotImplementedError()
 
         private fun isFeed(jsonData: ByteArray) =
             JSONObject(String(jsonData)).let {
@@ -162,7 +175,7 @@ public class OPDS2Parser {
             }
             if (metadataDict.has("modified")) {
                 metadataDict.get("modified").let {
-                    opdsMetadata.modified = DateTime(it.toString()).toDate()
+                    opdsMetadata.modified = Instant.parse(it.toString())
                 }
             }
             if (metadataDict.has("@type")) {
@@ -272,15 +285,13 @@ public class OPDS2Parser {
         }
 
         private fun parsePublication(json: JSONObject, baseUrl: Url): Publication? =
-            Manifest.fromJSON(json, mediaTypeRetriever = mediaTypeRetriever)
+            Manifest.fromJSON(json)
                 // Self link takes precedence over the given `baseUrl`.
                 ?.let { it.normalizeHrefsToBase(it.linkWithRel("self")?.href?.resolve() ?: baseUrl) }
                 ?.let { Publication(it) }
 
         private fun parseLink(json: JSONObject, baseUrl: Url): Link? =
-            Link.fromJSON(json, mediaTypeRetriever)
+            Link.fromJSON(json)
                 ?.normalizeHrefsToBase(baseUrl)
-
-        public var mediaTypeRetriever: MediaTypeRetriever = MediaTypeRetriever()
     }
 }

@@ -4,6 +4,8 @@
  * available in the top-level LICENSE file of the project.
  */
 
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.r2.shared.util
 
 import android.net.Uri
@@ -15,6 +17,7 @@ import java.net.URL
 import kotlinx.parcelize.Parcelize
 import org.readium.r2.shared.DelicateReadiumApi
 import org.readium.r2.shared.InternalReadiumApi
+import org.readium.r2.shared.extensions.isPrintableAscii
 import org.readium.r2.shared.extensions.percentEncodedPath
 import org.readium.r2.shared.extensions.tryOrNull
 
@@ -43,19 +46,6 @@ public sealed class Url : Parcelable {
             return invoke(Uri.parse(url))
         }
 
-        /**
-         * Creates an [Url] from a legacy HREF.
-         *
-         * For example, if it is a relative path such as `/dir/my chapter.html`, it will be
-         * converted to the valid relative URL `dir/my%20chapter.html`.
-         *
-         * Only use this API when you are upgrading to Readium 3.x and migrating the HREFs stored in
-         * your database. See the 3.0 migration guide for more information.
-         */
-        @DelicateReadiumApi
-        public fun fromLegacyHref(href: String): Url? =
-            AbsoluteUrl(href) ?: fromDecodedPath(href.removePrefix("/"))
-
         internal operator fun invoke(uri: Uri): Url? =
             if (uri.isAbsolute) {
                 AbsoluteUrl(uri)
@@ -83,9 +73,10 @@ public sealed class Url : Parcelable {
     /**
      * Extension of the filename portion of the URL path.
      */
-    public val extension: String?
+    public val extension: FileExtension?
         get() = filename?.substringAfterLast('.', "")
             ?.takeIf { it.isNotEmpty() }
+            ?.let { FileExtension(it) }
 
     /**
      * Represents a list of query parameters in a URL.
@@ -182,9 +173,39 @@ public sealed class Url : Parcelable {
     public open fun relativize(url: Url): Url =
         checkNotNull(toURI().relativize(url.toURI()).toUrl())
 
+    /**
+     * Normalizes the URL using a subset of the RFC-3986 rules.
+     *
+     * https://datatracker.ietf.org/doc/html/rfc3986#section-6
+     */
+    public open fun normalize(): Url =
+        uri.buildUpon()
+            .apply {
+                path?.let {
+                    var normalizedPath = File(it).normalize().path
+                    if (it.endsWith("/")) {
+                        normalizedPath += "/"
+                    }
+                    path(normalizedPath)
+                }
+
+                if (this@Url is AbsoluteUrl) {
+                    scheme(scheme.value)
+                }
+            }
+            .build()
+            .toUrl()!!
+
     override fun toString(): String =
         uri.toString()
 
+    /**
+     * Returns whether two URLs are strictly equal, by comparing their string representation.
+     *
+     * WARNING: Strict URL comparisons can be a source of bug, if the URLs are not normalized.
+     * In most cases, you should compare using [Url.isEquivalent].
+     */
+    @DelicateReadiumApi
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
@@ -194,6 +215,15 @@ public sealed class Url : Parcelable {
         if (uri.toString() != other.uri.toString()) return false
 
         return true
+    }
+
+    /**
+     * Returns whether the receiver is equivalent to the given `url` after normalization.
+     */
+    @OptIn(DelicateReadiumApi::class)
+    public fun isEquivalent(url: Url?): Boolean {
+        url ?: return false
+        return normalize() == url.normalize()
     }
 
     override fun hashCode(): Int =
@@ -250,6 +280,9 @@ public class AbsoluteUrl private constructor(override val uri: Uri) : Url() {
     public override fun resolve(url: Url): AbsoluteUrl =
         super.resolve(url) as AbsoluteUrl
 
+    public override fun normalize(): AbsoluteUrl =
+        super.normalize() as AbsoluteUrl
+
     /**
      * Identifies the type of URL.
      */
@@ -303,7 +336,35 @@ public class RelativeUrl private constructor(override val uri: Uri) : Url() {
                 RelativeUrl(uri)
             }
     }
+
+    public override fun normalize(): RelativeUrl =
+        super.normalize() as RelativeUrl
 }
+
+/**
+ * Creates an [Url] from a legacy HREF.
+ *
+ * For example, if it is a relative path such as `/dir/my chapter.html`, it will be
+ * converted to the valid relative URL `dir/my%20chapter.html`.
+ *
+ * Only use this API when you are upgrading to Readium 3.x and migrating the HREFs stored in
+ * your database. See the 3.0 migration guide for more information.
+ */
+@DelicateReadiumApi
+public fun Url.Companion.fromLegacyHref(href: String): Url? =
+    AbsoluteUrl(href) ?: fromDecodedPath(href.removePrefix("/"))
+
+/**
+ * According to the EPUB specification, the HREFs in the EPUB package must be valid URLs (so
+ * percent-encoded). Unfortunately, many EPUBs don't follow this rule, and use invalid HREFs such
+ * as `my chapter.html` or `/dir/my chapter.html`.
+ *
+ * As a workaround, we assume the HREFs are valid percent-encoded URLs, and fallback to decoded paths
+ * if we can't parse the URL.
+ */
+@InternalReadiumApi
+public fun Url.Companion.fromEpubHref(href: String): Url? =
+    Url(href) ?: fromDecodedPath(href)
 
 public fun File.toUrl(): AbsoluteUrl =
     checkNotNull(AbsoluteUrl(Uri.fromFile(this)))
@@ -352,5 +413,39 @@ private fun Uri.addFileAuthority(): Uri =
     }
 
 private fun String.isValidUrl(): Boolean =
-    // Uri.parse doesn't really validate the URL, it could contain invalid characters.
-    isNotBlank() && tryOrNull { URI(this) } != null
+    // Uri.parse doesn't really validate the URL, it could contain invalid characters, so we use
+    // URI. However, URI allows some non-ASCII characters.
+    isNotBlank() && isPrintableAscii() && tryOrNull { URI(this) } != null
+
+@JvmInline
+public value class FileExtension(
+    public val value: String
+) {
+    override fun toString(): String = value
+}
+
+/**
+ * Appends this file extension to [filename].
+ */
+public fun FileExtension?.appendToFilename(filename: String): String =
+    this?.let { "$filename.$value" } ?: filename
+
+/**
+ * Returns whether the receiver is equivalent to the given `url` after normalization.
+ */
+@OptIn(DelicateReadiumApi::class)
+public fun Url?.isEquivalent(url: Url?): Boolean {
+    if (this == null && url == null) return true
+    return this?.normalize() == url?.normalize()
+}
+
+/**
+ * Returns the value of the first key matching `key` after normalization.
+ */
+@OptIn(DelicateReadiumApi::class)
+public fun <T> Map<Url, T>.getEquivalent(key: Url): T? =
+    get(key) ?: run {
+        val url = key.normalize()
+        keys.firstOrNull { it.normalize() == url }
+            ?.let { get(it) }
+    }

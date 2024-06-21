@@ -9,9 +9,7 @@ package org.readium.r2.testapp.data.model
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
-import org.readium.r2.shared.publication.protection.ContentProtection
 import org.readium.r2.shared.util.AbsoluteUrl
-import org.readium.r2.shared.util.asset.AssetType
 import org.readium.r2.shared.util.mediatype.MediaType
 
 @Entity(tableName = Book.TABLE_NAME)
@@ -33,10 +31,6 @@ data class Book(
     val progression: String? = null,
     @ColumnInfo(name = MEDIA_TYPE)
     val rawMediaType: String,
-    @ColumnInfo(name = ASSET_TYPE)
-    val rawAssetType: String,
-    @ColumnInfo(name = DRM)
-    val drm: String? = null,
     @ColumnInfo(name = COVER)
     val cover: String
 ) {
@@ -50,8 +44,6 @@ data class Book(
         identifier: String,
         progression: String? = null,
         mediaType: MediaType,
-        assetType: AssetType,
-        drm: ContentProtection.Scheme?,
         cover: String
     ) : this(
         id = id,
@@ -62,22 +54,13 @@ data class Book(
         identifier = identifier,
         progression = progression,
         rawMediaType = mediaType.toString(),
-        rawAssetType = assetType.value,
-        drm = drm?.uri,
         cover = cover
     )
 
     val url: AbsoluteUrl get() = AbsoluteUrl(href)!!
 
     val mediaType: MediaType get() =
-        MediaType(rawMediaType) ?: MediaType.BINARY
-
-    val drmScheme: ContentProtection.Scheme? get() =
-        drm?.let { ContentProtection.Scheme(it) }
-
-    val assetType: AssetType
-        get() = AssetType(rawAssetType)
-            ?: throw IllegalStateException("Invalid asset type $rawAssetType")
+        MediaType(rawMediaType)!!
 
     companion object {
 
@@ -90,8 +73,6 @@ data class Book(
         const val IDENTIFIER = "identifier"
         const val PROGRESSION = "progression"
         const val MEDIA_TYPE = "media_type"
-        const val ASSET_TYPE = "asset_type"
         const val COVER = "cover"
-        const val DRM = "drm"
     }
 }

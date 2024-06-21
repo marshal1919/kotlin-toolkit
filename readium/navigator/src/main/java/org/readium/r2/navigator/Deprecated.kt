@@ -7,11 +7,15 @@
  * LICENSE file present in the project repository where this source code is maintained.
  */
 
+@file:Suppress("UnusedReceiverParameter", "UnusedParameter")
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.r2.navigator
 
 import kotlin.time.Duration
 import kotlinx.coroutines.flow.Flow
 import org.readium.r2.navigator.media.MediaPlayback
+import org.readium.r2.shared.InternalReadiumApi
 
 @Deprecated("Use navigator fragments.", level = DeprecationLevel.ERROR)
 public interface IR2Activity
@@ -23,7 +27,6 @@ public interface IR2TTS
  * A navigator rendering an audio or video publication.
  */
 @Deprecated("Use the new readium-navigator-media modules.")
-@OptIn(ExperimentalAudiobook::class)
 public interface MediaNavigator : Navigator {
 
     /**
@@ -78,26 +81,4 @@ public interface MediaNavigator : Navigator {
     public fun seekRelative(offset: Duration)
 
     public interface Listener : Navigator.Listener
-}
-
-/**
- * Moves to the left content portion (eg. page) relative to the reading progression direction.
- */
-@Deprecated(
-    "Use a DirectionalNavigationAdapter or goFoward and goBackward.",
-    level = DeprecationLevel.ERROR
-)
-public fun VisualNavigator.goLeft(animated: Boolean = false, completion: () -> Unit = {}): Boolean {
-    throw NotImplementedError()
-}
-
-/**
- * Moves to the right content portion (eg. page) relative to the reading progression direction.
- */
-@Deprecated(
-    "Use a DirectionalNavigationAdapter or goFoward and goBackward.",
-    level = DeprecationLevel.ERROR
-)
-public fun VisualNavigator.goRight(animated: Boolean = false, completion: () -> Unit = {}): Boolean {
-    throw NotImplementedError()
 }

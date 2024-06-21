@@ -4,11 +4,16 @@
  * available in the top-level LICENSE file of the project.
  */
 
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.r2.shared.util.resource
 
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.extensions.coerceIn
 import org.readium.r2.shared.extensions.requireLengthFitInt
 import org.readium.r2.shared.util.AbsoluteUrl
+import org.readium.r2.shared.util.Try
+import org.readium.r2.shared.util.data.ReadError
 import org.readium.r2.shared.util.flatMap
 
 /**
@@ -31,21 +36,27 @@ public abstract class TransformingResource(
          */
         public operator fun invoke(
             resource: Resource,
-            transform: suspend (ByteArray) -> ResourceTry<ByteArray>
+            transform: suspend (ByteArray) -> Try<ByteArray, ReadError>
         ): TransformingResource =
             object : TransformingResource(resource) {
-                override suspend fun transform(data: ResourceTry<ByteArray>): ResourceTry<ByteArray> =
-                    data.flatMap { transform(it) }
+                override suspend fun transform(data: Try<ByteArray, ReadError>): Try<ByteArray, ReadError> =
+                    data.flatMap {
+                        try {
+                            transform(it)
+                        } catch (e: OutOfMemoryError) {
+                            Try.failure(ReadError.OutOfMemory(e))
+                        }
+                    }
             }
     }
 
-    override val source: AbsoluteUrl? = null
+    override val sourceUrl: AbsoluteUrl? = null
 
-    private lateinit var _bytes: ResourceTry<ByteArray>
+    private lateinit var _bytes: Try<ByteArray, ReadError>
 
-    public abstract suspend fun transform(data: ResourceTry<ByteArray>): ResourceTry<ByteArray>
+    public abstract suspend fun transform(data: Try<ByteArray, ReadError>): Try<ByteArray, ReadError>
 
-    private suspend fun bytes(): ResourceTry<ByteArray> {
+    private suspend fun bytes(): Try<ByteArray, ReadError> {
         if (::_bytes.isInitialized) {
             return _bytes
         }
@@ -58,7 +69,7 @@ public abstract class TransformingResource(
         return bytes
     }
 
-    override suspend fun read(range: LongRange?): ResourceTry<ByteArray> =
+    override suspend fun read(range: LongRange?): Try<ByteArray, ReadError> =
         bytes().map {
             if (range == null) {
                 return bytes()
@@ -72,8 +83,9 @@ public abstract class TransformingResource(
             it.sliceArray(range.map(Long::toInt))
         }
 
-    override suspend fun length(): ResourceTry<Long> = bytes().map { it.size.toLong() }
+    override suspend fun length(): Try<Long, ReadError> =
+        bytes().map { it.size.toLong() }
 }
 
-public fun Resource.map(transform: suspend (ByteArray) -> ResourceTry<ByteArray>): Resource =
+public fun Resource.map(transform: suspend (ByteArray) -> Try<ByteArray, ReadError>): Resource =
     TransformingResource(this, transform = transform)

@@ -7,371 +7,286 @@
 package org.readium.r2.shared.util.asset
 
 import android.content.ContentResolver
-import android.content.Context
-import android.net.Uri
-import android.provider.MediaStore
 import java.io.File
-import org.readium.r2.shared.extensions.queryProjection
 import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.Either
-import org.readium.r2.shared.util.Error as SharedError
-import org.readium.r2.shared.util.ThrowableError
+import org.readium.r2.shared.util.Error
+import org.readium.r2.shared.util.FileExtension
 import org.readium.r2.shared.util.Try
 import org.readium.r2.shared.util.Url
-import org.readium.r2.shared.util.flatMap
+import org.readium.r2.shared.util.archive.ArchiveOpener
+import org.readium.r2.shared.util.data.Container
+import org.readium.r2.shared.util.file.FileResource
+import org.readium.r2.shared.util.format.Format
+import org.readium.r2.shared.util.format.FormatHints
+import org.readium.r2.shared.util.format.FormatSniffer
 import org.readium.r2.shared.util.getOrElse
+import org.readium.r2.shared.util.http.HttpClient
 import org.readium.r2.shared.util.mediatype.MediaType
-import org.readium.r2.shared.util.mediatype.MediaTypeHints
-import org.readium.r2.shared.util.mediatype.MediaTypeRetriever
-import org.readium.r2.shared.util.resource.ArchiveFactory
-import org.readium.r2.shared.util.resource.Container
-import org.readium.r2.shared.util.resource.ContainerFactory
-import org.readium.r2.shared.util.resource.ContainerMediaTypeSnifferContent
-import org.readium.r2.shared.util.resource.DirectoryContainerFactory
-import org.readium.r2.shared.util.resource.FileResourceFactory
-import org.readium.r2.shared.util.resource.FileZipArchiveFactory
 import org.readium.r2.shared.util.resource.Resource
 import org.readium.r2.shared.util.resource.ResourceFactory
-import org.readium.r2.shared.util.resource.ResourceMediaTypeSnifferContent
-import org.readium.r2.shared.util.toUrl
+import org.readium.r2.shared.util.resource.borrow
+import org.readium.r2.shared.util.resource.filename
+import org.readium.r2.shared.util.resource.mediaType
+import org.readium.r2.shared.util.use
 
 /**
- * Retrieves an [Asset] instance providing reading access to the resource(s) of an asset stored at a
- * given [Url].
+ * Retrieves an [Asset] instance providing reading access to the resource(s) of an asset stored at
+ * a given [Url] as well as its [Format].
  */
-public class AssetRetriever(
-    private val mediaTypeRetriever: MediaTypeRetriever,
+public class AssetRetriever private constructor(
+    private val assetSniffer: AssetSniffer,
     private val resourceFactory: ResourceFactory,
-    private val containerFactory: ContainerFactory,
-    private val archiveFactory: ArchiveFactory,
-    private val contentResolver: ContentResolver
+    private val archiveOpener: ArchiveOpener
 ) {
+    public constructor(
+        resourceFactory: ResourceFactory,
+        archiveOpener: ArchiveOpener,
+        formatSniffer: FormatSniffer
+    ) : this(AssetSniffer(formatSniffer, archiveOpener), resourceFactory, archiveOpener)
 
-    public companion object {
-        public operator fun invoke(context: Context): AssetRetriever {
-            val mediaTypeRetriever = MediaTypeRetriever()
-            return AssetRetriever(
-                mediaTypeRetriever = mediaTypeRetriever,
-                resourceFactory = FileResourceFactory(mediaTypeRetriever),
-                containerFactory = DirectoryContainerFactory(mediaTypeRetriever),
-                archiveFactory = FileZipArchiveFactory(mediaTypeRetriever),
-                contentResolver = context.contentResolver
-            )
-        }
-    }
+    public constructor(
+        contentResolver: ContentResolver,
+        httpClient: HttpClient
+    ) : this(
+        DefaultResourceFactory(contentResolver, httpClient),
+        DefaultArchiveOpener(),
+        DefaultFormatSniffer()
+    )
 
-    public sealed class Error(
+    /**
+     * Error while trying to retrieve an asset from an URL.
+     */
+    public sealed class RetrieveUrlError(
         override val message: String,
-        override val cause: SharedError?
-    ) : SharedError {
+        override val cause: Error?
+    ) : Error {
 
+        /**
+         * The scheme (e.g. http, file, content) for the requested [Url] is not supported.
+         */
         public class SchemeNotSupported(
             public val scheme: Url.Scheme,
-            cause: SharedError?
-        ) : Error("Scheme $scheme is not supported.", cause) {
+            cause: Error? = null
+        ) : RetrieveUrlError("Url scheme $scheme is not supported.", cause)
 
-            public constructor(scheme: Url.Scheme, exception: Exception) :
-                this(scheme, ThrowableError(exception))
-        }
+        /**
+         * The format of the resource at the requested [Url] is not recognized.
+         */
+        public class FormatNotSupported(
+            cause: Error? = null
+        ) : RetrieveUrlError("Asset format is not supported.", cause)
 
-        public class NotFound(
-            public val url: AbsoluteUrl,
-            cause: SharedError?
-        ) : Error("Asset could not be found at $url.", cause) {
-
-            public constructor(url: AbsoluteUrl, exception: Exception) :
-                this(url, ThrowableError(exception))
-        }
-
-        public class InvalidAsset(cause: SharedError?) :
-            Error("Asset looks corrupted.", cause) {
-
-            public constructor(exception: Exception) :
-                this(ThrowableError(exception))
-        }
-
-        public class ArchiveFormatNotSupported(cause: SharedError?) :
-            Error("Archive factory does not support this kind of archive.", cause) {
-
-            public constructor(exception: Exception) :
-                this(ThrowableError(exception))
-        }
-
-        public class Forbidden(
-            public val url: AbsoluteUrl,
-            cause: SharedError?
-        ) : Error("Access to asset at url $url is forbidden.", cause) {
-
-            public constructor(url: AbsoluteUrl, exception: Exception) :
-                this(url, ThrowableError(exception))
-        }
-
-        public class Unavailable(cause: SharedError) :
-            Error("Asset seems not to be available at the moment.", cause) {
-
-            public constructor(exception: Exception) :
-                this(ThrowableError(exception))
-        }
-
-        public class OutOfMemory(error: OutOfMemoryError) :
-            Error(
-                "There is not enough memory on the device to load the asset.",
-                ThrowableError(error)
-            )
-
-        public class Unknown(exception: Exception) :
-            Error("Something unexpected happened.", ThrowableError(exception))
+        /**
+         * An error occurred when trying to read the asset.
+         */
+        public class Reading(override val cause: org.readium.r2.shared.util.data.ReadError) :
+            RetrieveUrlError("An error occurred when trying to read asset.", cause)
     }
 
     /**
-     * Retrieves an asset from a known media and asset type.
+     * Error while trying to retrieve an asset from a [Resource] or a [Container].
+     */
+    public sealed class RetrieveError(
+        override val message: String,
+        override val cause: Error?
+    ) : Error {
+
+        /**
+         * The format of the resource is not recognized.
+         */
+        public class FormatNotSupported(
+            cause: Error? = null
+        ) : RetrieveError("Asset format is not supported.", cause)
+
+        /**
+         * An error occurred when trying to read the asset.
+         */
+        public class Reading(override val cause: org.readium.r2.shared.util.data.ReadError) :
+            RetrieveError("An error occurred when trying to read asset.", cause)
+    }
+
+    /**
+     * Retrieves an asset from an url and a known format.
      */
     public suspend fun retrieve(
         url: AbsoluteUrl,
-        mediaType: MediaType,
-        assetType: AssetType
-    ): Try<Asset, Error> {
-        return when (assetType) {
-            AssetType.Archive ->
-                retrieveArchiveAsset(url, mediaType)
-
-            AssetType.Directory ->
-                retrieveDirectoryAsset(url, mediaType)
-
-            AssetType.Resource ->
-                retrieveResourceAsset(url, mediaType)
-        }
-    }
-
-    private suspend fun retrieveArchiveAsset(
-        url: AbsoluteUrl,
-        mediaType: MediaType
-    ): Try<Asset.Container, Error> {
-        return retrieveResource(url)
-            .flatMap { resource: Resource ->
-                archiveFactory.create(resource, password = null)
-                    .mapFailure { error ->
-                        when (error) {
-                            is ArchiveFactory.Error.FormatNotSupported ->
-                                Error.ArchiveFormatNotSupported(
-                                    error
-                                )
-                            is ArchiveFactory.Error.ResourceReading ->
-                                error.resourceException.wrap(url)
-                            is ArchiveFactory.Error.PasswordsNotSupported ->
-                                Error.ArchiveFormatNotSupported(
-                                    error
-                                )
-                        }
-                    }
-            }
-            .map { container ->
-                Asset.Container(
-                    mediaType,
-                    exploded = false,
-                    container
-                )
-            }
-    }
-
-    private suspend fun retrieveDirectoryAsset(
-        url: AbsoluteUrl,
-        mediaType: MediaType
-    ): Try<Asset.Container, Error> {
-        return containerFactory.create(url)
-            .map { container ->
-                Asset.Container(
-                    mediaType,
-                    exploded = true,
-                    container
-                )
-            }
-            .mapFailure { error ->
-                when (error) {
-                    is ContainerFactory.Error.NotAContainer ->
-                        Error.NotFound(
-                            url,
-                            error
-                        )
-                    is ContainerFactory.Error.Forbidden ->
-                        Error.Forbidden(
-                            url,
-                            error
-                        )
-                    is ContainerFactory.Error.SchemeNotSupported ->
-                        Error.SchemeNotSupported(
-                            error.scheme,
-                            error
-                        )
-                }
-            }
-    }
-
-    private suspend fun retrieveResourceAsset(
-        url: AbsoluteUrl,
-        mediaType: MediaType
-    ): Try<Asset.Resource, Error> {
-        return retrieveResource(url)
-            .map { resource ->
-                Asset.Resource(
-                    mediaType,
-                    resource
-                )
-            }
-    }
-
-    private suspend fun retrieveResource(
-        url: AbsoluteUrl
-    ): Try<Resource, Error> {
-        return resourceFactory.create(url)
-            .mapFailure { error ->
-                when (error) {
-                    is ResourceFactory.Error.NotAResource ->
-                        Error.NotFound(
-                            url,
-                            error
-                        )
-                    is ResourceFactory.Error.Forbidden ->
-                        Error.Forbidden(
-                            url,
-                            error
-                        )
+        format: Format
+    ): Try<Asset, RetrieveUrlError> {
+        val resource = resourceFactory.create(url)
+            .getOrElse {
+                when (it) {
                     is ResourceFactory.Error.SchemeNotSupported ->
-                        Error.SchemeNotSupported(
-                            error.scheme,
-                            error
-                        )
+                        return Try.failure(RetrieveUrlError.SchemeNotSupported(it.scheme, it))
                 }
             }
+
+        val asset = archiveOpener
+            .open(format, resource)
+            .getOrElse {
+                return when (it) {
+                    is ArchiveOpener.OpenError.Reading ->
+                        Try.failure(RetrieveUrlError.Reading(it.cause))
+                    is ArchiveOpener.OpenError.FormatNotSupported ->
+                        Try.success(ResourceAsset(format, resource))
+                }
+            }
+
+        return Try.success(asset)
     }
-
-    private fun Resource.Exception.wrap(url: AbsoluteUrl): Error =
-        when (this) {
-            is Resource.Exception.Forbidden ->
-                Error.Forbidden(
-                    url,
-                    this
-                )
-            is Resource.Exception.NotFound ->
-                Error.InvalidAsset(
-                    this
-                )
-            is Resource.Exception.Unavailable, Resource.Exception.Offline ->
-                Error.Unavailable(
-                    this
-                )
-            is Resource.Exception.OutOfMemory ->
-                Error.OutOfMemory(
-                    cause
-                )
-            is Resource.Exception.Other ->
-                Error.Unknown(
-                    this
-                )
-            else -> Error.Unknown(
-                this
-            )
-        }
-
-    /* Sniff unknown assets */
 
     /**
      * Retrieves an asset from a local file.
      */
-    public suspend fun retrieve(file: File): Asset? =
-        retrieve(file.toUrl())
+    public suspend fun retrieve(
+        file: File,
+        formatHints: FormatHints = FormatHints()
+    ): Try<Asset, RetrieveError> =
+        retrieve(FileResource(file), formatHints)
 
     /**
-     * Retrieves an asset from a [Uri].
+     * Retrieves an asset from an [AbsoluteUrl].
      */
-    public suspend fun retrieve(uri: Uri): Asset? {
-        val url = uri.toUrl()
-            ?: return null
+    public suspend fun retrieve(
+        url: AbsoluteUrl,
+        formatHints: FormatHints = FormatHints()
+    ): Try<Asset, RetrieveUrlError> {
+        val resource = resourceFactory.create(url)
+            .getOrElse {
+                return Try.failure(
+                    when (it) {
+                        is ResourceFactory.Error.SchemeNotSupported ->
+                            RetrieveUrlError.SchemeNotSupported(it.scheme)
+                    }
+                )
+            }
 
-        return retrieve(url)
+        return retrieve(resource, formatHints)
+            .mapFailure {
+                when (it) {
+                    is RetrieveError.FormatNotSupported -> RetrieveUrlError.FormatNotSupported(
+                        it.cause
+                    )
+                    is RetrieveError.Reading -> RetrieveUrlError.Reading(it.cause)
+                }
+            }
     }
 
     /**
-     * Retrieves an asset from a [Url].
+     * Retrieves an asset from an [AbsoluteUrl].
      */
-    public suspend fun retrieve(url: Url): Asset? {
-        if (url !is AbsoluteUrl) return null
+    public suspend fun retrieve(
+        url: AbsoluteUrl,
+        mediaType: MediaType
+    ): Try<Asset, RetrieveUrlError> =
+        retrieve(url, FormatHints(mediaType = mediaType))
 
-        val resource = resourceFactory
-            .create(url)
-            .getOrElse { error ->
-                when (error) {
-                    is ResourceFactory.Error.NotAResource ->
-                        return containerFactory.create(url).getOrNull()
-                            ?.let { retrieve(url, it, exploded = true) }
-                    else -> return null
+    /**
+     * Retrieves an asset from a local file.
+     */
+    public suspend fun retrieve(
+        file: File,
+        mediaType: MediaType
+    ): Try<Asset, RetrieveError> =
+        retrieve(file, FormatHints(mediaType = mediaType))
+
+    /**
+     * Retrieves an asset from an already opened resource.
+     */
+    public suspend fun retrieve(
+        resource: Resource,
+        hints: FormatHints = FormatHints()
+    ): Try<Asset, RetrieveError> {
+        val properties = resource.properties()
+            .getOrElse { return Try.failure(RetrieveError.Reading(it)) }
+
+        val internalHints = FormatHints(
+            mediaType = properties.mediaType,
+            fileExtension = properties.filename
+                ?.substringAfterLast(".")
+                ?.let { FileExtension((it)) }
+        )
+
+        return assetSniffer
+            .sniff(Either.Left(resource), hints + internalHints)
+            .mapFailure {
+                when (it) {
+                    AssetSniffer.SniffError.NotRecognized -> RetrieveError.FormatNotSupported(it)
+                    is AssetSniffer.SniffError.Reading -> RetrieveError.Reading(it.cause)
+                }
+            }
+    }
+
+    /**
+     * Retrieves an asset from an already opened container.
+     */
+    public suspend fun retrieve(
+        container: Container<Resource>,
+        hints: FormatHints = FormatHints()
+    ): Try<Asset, RetrieveError> =
+        assetSniffer
+            .sniff(Either.Right(container), hints)
+            .mapFailure {
+                when (it) {
+                    AssetSniffer.SniffError.NotRecognized -> RetrieveError.FormatNotSupported(it)
+                    is AssetSniffer.SniffError.Reading -> RetrieveError.Reading(it.cause)
                 }
             }
 
-        return archiveFactory.create(resource, password = null)
-            .fold(
-                { retrieve(url, container = it, exploded = false) },
-                { retrieve(url, resource) }
-            )
-    }
+    /**
+     * Retrieves an asset from an already opened resource.
+     */
+    public suspend fun retrieve(
+        resource: Resource,
+        mediaType: MediaType
+    ): Try<Asset, RetrieveError> =
+        retrieve(resource, FormatHints(mediaType = mediaType))
 
-    private suspend fun retrieve(
+    /**
+     * Retrieves an asset from an already opened container.
+     */
+    public suspend fun retrieve(
+        container: Container<Resource>,
+        mediaType: MediaType
+    ): Try<Asset, RetrieveError> =
+        retrieve(container, FormatHints(mediaType = mediaType))
+
+    /**
+     * Sniffs the format of a file content.
+     */
+    public suspend fun sniffFormat(
+        file: File,
+        hints: FormatHints = FormatHints()
+    ): Try<Format, RetrieveError> =
+        FileResource(file).use { sniffFormat(it, hints) }
+
+    /**
+     * Sniffs the format of the content available at [url].
+     */
+    public suspend fun sniffFormat(
         url: AbsoluteUrl,
-        container: Container,
-        exploded: Boolean
-    ): Asset? {
-        val mediaType = retrieveMediaType(url, Either(container))
-            ?: return null
-        return Asset.Container(
-            mediaType,
-            exploded = exploded,
-            container = container
-        )
-    }
+        hints: FormatHints = FormatHints()
+    ): Try<Format, RetrieveUrlError> =
+        retrieve(url, hints)
+            .map { asset -> asset.use { it.format } }
 
-    private suspend fun retrieve(url: AbsoluteUrl, resource: Resource): Asset? {
-        val mediaType = retrieveMediaType(url, Either(resource))
-            ?: return null
-        return Asset.Resource(
-            mediaType,
-            resource = resource
-        )
-    }
+    /**
+     * Sniffs the format of a resource content.
+     */
+    public suspend fun sniffFormat(
+        resource: Resource,
+        hints: FormatHints = FormatHints()
+    ): Try<Format, RetrieveError> =
+        retrieve(resource.borrow(), hints)
+            .map { asset -> asset.use { it.format } }
 
-    private suspend fun retrieveMediaType(
-        url: AbsoluteUrl,
-        asset: Either<Resource, Container>
-    ): MediaType? {
-        suspend fun retrieve(hints: MediaTypeHints): MediaType? =
-            mediaTypeRetriever.retrieve(
-                hints = hints,
-                content = when (asset) {
-                    is Either.Left -> ResourceMediaTypeSnifferContent(asset.value)
-                    is Either.Right -> ContainerMediaTypeSnifferContent(asset.value)
-                }
-            )
-
-        retrieve(MediaTypeHints(fileExtensions = listOfNotNull(url.extension)))
-            ?.let { return it }
-
-        // Falls back on the [contentResolver] in case of content Uri.
-        // Note: This is done after the heavy sniffing of the provided [sniffers], because
-        // otherwise it will detect JSON, XML or ZIP formats before we have a chance of sniffing
-        // their content (for example, for RWPM).
-
-        if (url.isContent) {
-            val contentHints = MediaTypeHints(
-                mediaType = contentResolver.getType(url.uri)
-                    ?.let { MediaType(it) }
-                    ?.takeUnless { it.matches(MediaType.BINARY) },
-                fileExtension = contentResolver
-                    .queryProjection(url.uri, MediaStore.MediaColumns.DISPLAY_NAME)
-                    ?.let { filename -> File(filename).extension }
-            )
-
-            retrieve(contentHints)?.let { return it }
-        }
-
-        return null
-    }
+    /**
+     * Sniffs the format of a container content.
+     */
+    public suspend fun sniffFormat(
+        container: Container<Resource>,
+        hints: FormatHints = FormatHints()
+    ): Try<Format, RetrieveError> =
+        retrieve(container, hints)
+            .map { asset -> asset.use { it.format } }
 }

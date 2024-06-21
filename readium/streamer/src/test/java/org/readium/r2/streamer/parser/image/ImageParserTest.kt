@@ -18,39 +18,55 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.firstWithRel
+import org.readium.r2.shared.util.FileExtension
 import org.readium.r2.shared.util.Url
+import org.readium.r2.shared.util.asset.AssetRetriever
+import org.readium.r2.shared.util.asset.ContainerAsset
+import org.readium.r2.shared.util.asset.ResourceAsset
+import org.readium.r2.shared.util.checkSuccess
+import org.readium.r2.shared.util.file.FileResource
+import org.readium.r2.shared.util.format.Format
+import org.readium.r2.shared.util.format.FormatSpecification
+import org.readium.r2.shared.util.format.Specification
+import org.readium.r2.shared.util.http.DefaultHttpClient
 import org.readium.r2.shared.util.mediatype.MediaType
-import org.readium.r2.shared.util.mediatype.MediaTypeRetriever
-import org.readium.r2.shared.util.resource.FileResource
-import org.readium.r2.shared.util.resource.FileZipArchiveFactory
-import org.readium.r2.shared.util.resource.ResourceContainer
-import org.readium.r2.shared.util.toUrl
+import org.readium.r2.shared.util.zip.ZipArchiveOpener
 import org.readium.r2.streamer.parseBlocking
-import org.readium.r2.streamer.parser.PublicationParser
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 
 @RunWith(RobolectricTestRunner::class)
 class ImageParserTest {
 
-    private val parser = ImageParser()
+    private val archiveOpener = ZipArchiveOpener()
+
+    private val contentResolver = RuntimeEnvironment.getApplication().contentResolver
+
+    private val assetSniffer = AssetRetriever(contentResolver, DefaultHttpClient())
+
+    private val parser = ImageParser(assetSniffer)
 
     private val cbzAsset = runBlocking {
         val file = fileForResource("futuristic_tales.cbz")
-        val resource = FileResource(file, mediaType = MediaType.CBZ)
-        val archive = FileZipArchiveFactory(MediaTypeRetriever()).create(
-            resource,
-            password = null
-        ).getOrNull()!!
-        PublicationParser.Asset(mediaType = MediaType.CBZ, archive)
+        val resource = FileResource(file)
+        val format = Format(
+            specification = FormatSpecification(Specification.Zip, Specification.InformalComic),
+            mediaType = MediaType.CBZ,
+            fileExtension = FileExtension("cbz")
+        )
+        val archive = archiveOpener.open(format, resource).checkSuccess()
+        ContainerAsset(format, archive.container)
     }
 
     private val jpgAsset = runBlocking {
         val file = fileForResource("futuristic_tales.jpg")
-        val resource = FileResource(file, mediaType = MediaType.JPEG)
-        PublicationParser.Asset(
+        val resource = FileResource(file)
+        val format = Format(
+            specification = FormatSpecification(Specification.Jpeg),
             mediaType = MediaType.JPEG,
-            ResourceContainer(file.toUrl(), resource)
+            fileExtension = FileExtension("jpg")
         )
+        ResourceAsset(format, resource)
     }
 
     private fun fileForResource(resource: String): File {

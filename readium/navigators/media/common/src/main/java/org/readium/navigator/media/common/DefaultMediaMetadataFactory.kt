@@ -4,6 +4,8 @@
  * available in the top-level LICENSE file of the project.
  */
 
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.navigator.media.common
 
 import android.graphics.Bitmap
@@ -13,6 +15,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MediaMetadata.PICTURE_TYPE_FRONT_COVER
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.*
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.extensions.tryOrNull
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.services.coverFitting
@@ -45,7 +48,7 @@ internal class DefaultMediaMetadataFactory(
             // byte array will go cross processes and should be kept small
             publication.coverFitting(Size(400, 400))
                 ?.compress(Bitmap.CompressFormat.PNG, 80, byteStream)
-            byteStream.toByteArray()
+                ?.let { byteStream.toByteArray() }
         }
     }
 
