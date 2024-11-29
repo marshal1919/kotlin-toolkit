@@ -7,44 +7,35 @@
 import org.jetbrains.dokka.gradle.DokkaTaskPartial
 
 plugins {
-    alias(libs.plugins.androidApplication) apply false
-    alias(libs.plugins.kotlinAndroid) apply false
-    alias(libs.plugins.library) apply false
-    alias(libs.plugins.publishPlugin) apply true
-    alias(libs.plugins.dokka) apply true
-    alias(libs.plugins.ksp) apply false
-    alias(libs.plugins.ktlint) apply true
-    alias(libs.plugins.serialization) apply false    
+    alias(libs.plugins.dokka)
+    alias(libs.plugins.ktlint)
 }
 
 subprojects {
-apply(plugin = "org.jlleitschuh.gradle.ktlint")
+    if (name != "test-app") {
+        apply(plugin = "org.jetbrains.dokka")
+    }
+    apply(plugin = "org.jlleitschuh.gradle.ktlint")
 
-ktlint {
-android.set(true)
-disabledRules.add("no-wildcard-imports")
-disabledRules.add("max-line-length")
-}
-}
-
-tasks.register("clean", Delete::class).configure {
-delete(rootProject.buildDir)
+    ktlint {
+        android.set(true)
+    }
 }
 
 tasks.register("cleanDocs", Delete::class).configure {
-delete("${project.rootDir}/docs/readium", "${project.rootDir}/docs/index.md", "${project.rootDir}/site")
+    delete("${project.rootDir}/docs/readium", "${project.rootDir}/docs/index.md", "${project.rootDir}/site")
 }
 
 tasks.withType<DokkaTaskPartial>().configureEach {
-dokkaSourceSets {
-configureEach {
-    reportUndocumented.set(false)
-    skipEmptyPackages.set(false)
-    skipDeprecated.set(true)
-}
-}
+    dokkaSourceSets {
+        configureEach {
+            reportUndocumented.set(false)
+            skipEmptyPackages.set(false)
+            skipDeprecated.set(true)
+        }
+    }
 }
 
 tasks.named<org.jetbrains.dokka.gradle.DokkaMultiModuleTask>("dokkaGfmMultiModule").configure {
-outputDirectory.set(file("${projectDir.path}/docs"))
+    outputDirectory.set(file("${projectDir.path}/docs"))
 }

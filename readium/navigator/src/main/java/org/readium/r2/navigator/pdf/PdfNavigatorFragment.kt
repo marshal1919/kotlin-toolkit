@@ -169,7 +169,7 @@ public class PdfNavigatorFragment<S : Configurable.Settings, P : Configurable.Pr
     ): View {
         val view = FragmentContainerView(inflater.context)
         view.id = R.id.readium_pdf_container
-        return KeyInterceptorView(view, inputListener)
+        return KeyInterceptorView(view, this,inputListener)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {

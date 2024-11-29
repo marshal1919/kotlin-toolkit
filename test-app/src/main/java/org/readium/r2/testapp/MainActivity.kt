@@ -32,7 +32,7 @@ import com.google.android.material.snackbar.Snackbar
 class MainActivity : AppCompatActivity() {
 
     private lateinit var navController: NavController
-    private val viewModel: BookshelfViewModel by viewModels()
+    private val viewModel: MainViewModel by viewModels()
     private lateinit var sharedStoragePickerLauncher: ActivityResultLauncher<Array<String>>
     private lateinit var dictUri: String
 
@@ -40,7 +40,7 @@ class MainActivity : AppCompatActivity() {
         menuInflater.inflate(R.menu.mainmenu, menu)
         return true
     }
-    private val viewModel: MainViewModel by viewModels()
+    //private val viewModel: MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -86,7 +86,7 @@ class MainActivity : AppCompatActivity() {
                     val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION
                     contentResolver.takePersistableUriPermission(uri, takeFlags)
 
-                    dictUri=setDictPreferences(it)
+                    dictUri = setDictPreferences(it)
                 }
             }
         viewModel.channel.receive(this) { handleEvent(it) }
@@ -96,41 +96,6 @@ class MainActivity : AppCompatActivity() {
         return navController.navigateUp() || super.onSupportNavigateUp()
     }
 
-    //获取字典的uri
-    private fun setDictPreferences(uri:Uri): String {
-        val path=uri.path
-        var externalFileRootDir = getExternalFilesDir(null)
-        do {
-            externalFileRootDir =externalFileRootDir?.parentFile
-        } while (externalFileRootDir?.absolutePath!!.contains("/Android"))
-
-        val saveDir = externalFileRootDir.absolutePath
-        var name= saveDir+"/"+ path?.split(":")?.get(1)
-
-        // 向preferences中存入数据
-        val sharedPreferences = getSharedPreferences("dictpref", Context.MODE_PRIVATE)
-        val editor = sharedPreferences.edit()
-        editor.putString("uri", name)
-        editor.apply()
-
-        return name
-    }
-
-    fun fabClick(view: android.view.View) {
-        Toast.makeText(this, "请先选择字典位置", Toast.LENGTH_LONG).show()
-        sharedStoragePickerLauncher.launch(arrayOf("*/*","text/plain","application/pdf","application/epub+zip"))
-        //if(isExternalStorageWritable())
-        //    loadFile("test.txt")
-    }
-
-    //从preferences中读取字典数据，若没有则选择默认字典
-    fun setDict(itemMenu: MenuItem) {
-        /*val sharedPreferences = this.getSharedPreferences("dictpref", Context.MODE_PRIVATE)
-        val path = sharedPreferences.getString("uri", null)
-        if(path==null){
-
-        }*/
-        sharedStoragePickerLauncher.launch(arrayOf("*/*","text/plain","application/pdf","application/epub+zip"))
     private fun handleEvent(event: MainViewModel.Event) {
         when (event) {
             is MainViewModel.Event.ImportPublicationSuccess ->
@@ -144,5 +109,59 @@ class MainActivity : AppCompatActivity() {
                 event.error.toUserError().show(this)
             }
         }
+    }
+
+    //获取字典的uri
+    private fun setDictPreferences(uri: Uri): String {
+        val path = uri.path
+        var externalFileRootDir = getExternalFilesDir(null)
+        do {
+            externalFileRootDir = externalFileRootDir?.parentFile
+        } while (externalFileRootDir?.absolutePath!!.contains("/Android"))
+
+        val saveDir = externalFileRootDir.absolutePath
+        var name = saveDir + "/" + path?.split(":")?.get(1)
+
+        // 向preferences中存入数据
+        val sharedPreferences = getSharedPreferences("dictpref", Context.MODE_PRIVATE)
+        val editor = sharedPreferences.edit()
+        editor.putString("uri", name)
+        editor.apply()
+
+        return name
+    }
+
+    fun fabClick(view: android.view.View) {
+        Toast.makeText(this, "请先选择字典位置", Toast.LENGTH_LONG).show()
+        sharedStoragePickerLauncher.launch(
+            arrayOf(
+                "*/*",
+                "text/plain",
+                "application/pdf",
+                "application/epub+zip"
+            )
+        )
+        //if(isExternalStorageWritable())
+        //    loadFile("test.txt")
+    }
+
+    //从preferences中读取字典数据，若没有则选择默认字典
+    fun setDict(itemMenu: MenuItem) {
+        /*val sharedPreferences = this.getSharedPreferences("dictpref", Context.MODE_PRIVATE)
+        val path = sharedPreferences.getString("uri", null)
+        if(path==null){
+
+        }*/
+
+        sharedStoragePickerLauncher.launch(
+            arrayOf(
+                "*/*",
+                "text/plain",
+                "application/pdf",
+                "application/epub+zip"
+            )
+        )
+
+
     }
 }

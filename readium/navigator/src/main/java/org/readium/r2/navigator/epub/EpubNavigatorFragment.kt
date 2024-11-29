@@ -446,7 +446,7 @@ public class EpubNavigatorFragment internal constructor(
 
         // Fixed layout publications cannot intercept JS events yet.
         if (publication.metadata.presentation.layout == EpubLayout.FIXED) {
-            view = KeyInterceptorView(view, inputListener)
+            view = KeyInterceptorView(view, this,inputListener)
         }
 
         return view
@@ -823,7 +823,7 @@ public class EpubNavigatorFragment internal constructor(
             )
 
         override fun onKey(event: KeyEvent): Boolean =
-            inputListener.onKey(event)
+            inputListener.onKey(this@EpubNavigatorFragment,event)
 
         override fun onDecorationActivated(
             id: DecorationId,

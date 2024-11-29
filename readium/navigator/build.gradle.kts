@@ -1,3 +1,4 @@
+
 /*
  * Copyright 2018 Readium Foundation. All rights reserved.
  * Use of this source code is governed by the BSD-style license
@@ -5,12 +6,8 @@
  */
 
 plugins {
-    //id("com.android.library")
-    alias(libs.plugins.library)
-    kotlin("android")
-    kotlin("plugin.parcelize")
-    //kotlin("plugin.serialization")
-    alias(libs.plugins.serialization)
+    id("readium.library-conventions")
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {

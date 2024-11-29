@@ -6,6 +6,7 @@
 
 package org.readium.r2.navigator.util
 
+import org.readium.r2.navigator.VisualNavigator
 import org.readium.r2.navigator.OverflowableNavigator
 import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.Key
@@ -95,16 +96,16 @@ public class DirectionalNavigationAdapter(
         return false
     }
 
-    override fun onKey(event: KeyEvent): Boolean {
+    override fun onKey(navigator: VisualNavigator, event: KeyEvent): Boolean {
         if (event.type != KeyEvent.Type.Down || event.modifiers.isNotEmpty()) {
             return false
         }
 
         return when (event.key) {
-            Key.ArrowUp -> navigator.goBackward(animated = animatedTransition)
-            Key.ArrowDown, Key.Space -> navigator.goForward(animated = animatedTransition)
-            Key.ArrowLeft -> navigator.goLeft(animated = animatedTransition)
-            Key.ArrowRight -> navigator.goRight(animated = animatedTransition)
+            Key.ArrowUp -> this.navigator.goBackward(animated = animatedTransition)
+            Key.ArrowDown, Key.Space -> this.navigator.goForward(animated = animatedTransition)
+            Key.ArrowLeft -> this.navigator.goLeft(animated = animatedTransition)
+            Key.ArrowRight -> this.navigator.goRight(animated = animatedTransition)
             else -> false
         }
     }

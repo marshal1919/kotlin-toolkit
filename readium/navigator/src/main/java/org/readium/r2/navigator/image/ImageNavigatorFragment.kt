@@ -134,7 +134,7 @@ public class ImageNavigatorFragment private constructor(
             go(initialLocator)
         }
 
-        return KeyInterceptorView(view, inputListener)
+        return KeyInterceptorView(view, this,inputListener)
     }
 
     override fun onStart() {

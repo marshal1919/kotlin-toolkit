@@ -14,6 +14,7 @@ import org.readium.r2.shared.ExperimentalReadiumApi
 @OptIn(ExperimentalReadiumApi::class)
 internal class KeyInterceptorView(
     view: View,
+    private val navigator: VisualNavigator,
     private val listener: InputListener?
 ) : FrameLayout(view.context) {
 
@@ -29,14 +30,14 @@ internal class KeyInterceptorView(
     override fun onKeyUp(keyCode: Int, event: android.view.KeyEvent?): Boolean {
         event
             ?.let { KeyEvent(KeyEvent.Type.Up, it) }
-            ?.let { listener?.onKey(it) }
+            ?.let { listener?.onKey(navigator,it) }
         return super.onKeyUp(keyCode, event)
     }
 
     override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
         event
             ?.let { KeyEvent(KeyEvent.Type.Down, it) }
-            ?.let { listener?.onKey(it) }
+            ?.let { listener?.onKey(navigator,it) }
         return super.onKeyDown(keyCode, event)
     }
 }

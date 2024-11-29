@@ -1,7 +1,3 @@
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-import org.gradle.api.tasks.testing.Test
-import org.gradle.internal.impldep.org.apache.commons.lang.mutable.Mutable
-
 /*
  * Copyright 2021 Readium Foundation. All rights reserved.
  * Use of this source code is governed by the BSD-style license
@@ -11,7 +7,7 @@ import org.gradle.internal.impldep.org.apache.commons.lang.mutable.Mutable
 plugins {
     id("com.android.application")
     kotlin("android")
-    kotlin("plugin.parcelize")    
+    kotlin("plugin.parcelize")
     alias(libs.plugins.ksp)
 }
 
@@ -19,7 +15,7 @@ android {
     compileSdk = 34
     defaultConfig {
         minSdk = 21
-        //targetSdk = 34
+        targetSdk = 34
 
         applicationId = "org.readium.r2reader"
 
@@ -31,7 +27,6 @@ android {
         ndk.abiFilters.add("arm64-v8a")
         ndk.abiFilters.add("x86")
         ndk.abiFilters.add("x86_64")
-        //testInstrumentationRunnerArguments["runnerBuiler"]= "de.mannodermaus.junit5.AndroidJUnit5Builder"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
@@ -41,9 +36,6 @@ android {
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_1_8.toString()
         freeCompilerArgs = freeCompilerArgs + "-opt-in=kotlin.RequiresOptIn"
-    }
-    testOptions {
-        unitTests.isIncludeAndroidResources = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = libs.versions.androidx.compose.compiler.get()
@@ -55,10 +47,6 @@ android {
     }
     buildTypes {
         getByName("release") {
-            isMinifyEnabled = false
-            proguardFiles(getDefaultProguardFile("proguard-android.txt"))
-        }
-        getByName("debug") {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android.txt"))
         }
@@ -126,42 +114,11 @@ dependencies {
 
     // Room database
     implementation(libs.bundles.room)
-    implementation(libs.junit)
-    //implementation(libs.junit.jupiter)
-    implementation(libs.androidx.junit.ktx)
     ksp(libs.androidx.room.compiler)
 
     // Tests
-    //testImplementation(libs.junit)
+    testImplementation(libs.junit)
 
     androidTestImplementation(libs.androidx.ext.junit)
     androidTestImplementation(libs.androidx.expresso.core)
-    androidTestImplementation(libs.robolectric)
-    //androidTestImplementation(libs.junit.jupiter)
-    androidTestImplementation(libs.kotlin.test)
-    //androidTestImplementation(libs.testcore)
-    //androidTestImplementation(libs.androidx.junit5.test)
-    //androidTestImplementation(libs.junit5.test.core)
-    //androidTestRuntimeOnly(libs.junit5.test.runner)
-    //androidTestRuntimeOnly(libs.junit.jupiter.engine)
-    androidTestImplementation(libs.robolectric)
-    testImplementation(libs.robolectric)
-    //testImplementation(libs.kotlin.junit)
-    //testImplementation(libs.junit.jupiter)
-    testImplementation(libs.kotlin.junit)
-    //testImplementation(libs.kotlin.test)
-    //testImplementation(platform(libs.junit.junitbom))
-    //testImplementation(libs.testcore)
-    //testImplementation(libs.androidx.core.ktx)
-    testImplementation(libs.junit)
-    testImplementation(libs.androidx.test.ext.junit)
-    testImplementation(libs.kotlinx.coroutines.test)
-    //testImplementation(libs.androidx.junit5.test)
-    //testImplementation(libs.junit.platform)
-    //testCompileOnly(libs.junit.jupiter)
 }
-
-/*tasks.withType<Test>{
-    useJUnitPlatform()
-}*/
-

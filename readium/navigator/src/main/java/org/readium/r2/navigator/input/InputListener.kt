@@ -1,5 +1,6 @@
 package org.readium.r2.navigator.input
 
+import org.readium.r2.navigator.VisualNavigator
 import org.readium.r2.shared.ExperimentalReadiumApi
 
 @ExperimentalReadiumApi

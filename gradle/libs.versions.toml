@@ -1,7 +1,7 @@
 [versions]
 
 kotlin = "1.9.24"
-agp = "8.4.0"
+agp = "8.5.0-alpha06"
 desugar_jdk_libs = "2.0.4"
 gradle-maven-publish-plugin = "0.28.0"
 
@@ -75,10 +75,6 @@ timber = "5.0.1"
 
 [libraries]
 
-androidx-junit5-test = { module = "androidx.test.ext:junit", version.ref = "androidx-junit" }
-junit-jupiter-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit-jupiter" }
-junit5-test-runner = { module = "de.mannodermaus.junit5:android-test-runner", version.ref = "android-test-core" }
-junit5-test-core = { module = "de.mannodermaus.junit5:android-test-core", version.ref = "android-test-core" }
 androidx-activity-ktx = { group = "androidx.activity", name = "activity-ktx", version.ref = "androidx-activity" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "androidx-appcompat" }
 androidx-browser = { group = "androidx.browser", name = "browser", version.ref = "androidx-browser" }
@@ -94,7 +90,6 @@ androidx-compose-ui = { group = "androidx.compose.ui", name = "ui", version.ref 
 androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling", version.ref = "androidx-compose-ui" }
 androidx-constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "androidx-constraintlayout" }
 androidx-core = { group = "androidx.core", name = "core-ktx", version.ref = "androidx-core" }
-androidx-core-ktx = { module = "androidx.test:core-ktx", version.ref = "core" }
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "androidx-datastore" }
 androidx-expresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "androidx-expresso-core" }
 androidx-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidx-ext-junit" }
@@ -122,13 +117,9 @@ androidx-room-runtime = { group = "androidx.room", name = "room-runtime", versio
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "androidx-room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "androidx-room" }
 androidx-viewpager2 = { group = "androidx.viewpager2", name = "viewpager2", version.ref = "androidx-viewpager2" }
-androidx-webkit = { group = "androidx.webkit", name = "webkit", version = "1.8.0" }
-androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidx-test-ext-junit" }
+androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "androidx-webkit" }
 
 assertj = { group = "org.assertj", name = "assertj-core", version.ref = "assertj" }
-
-testcore = { module = "androidx.test:core", version.ref = "core" }
-dokka-gradle = { group = "org.jetbrains.dokka", name = "dokka-gradle-plugin", version.ref = "dokka" }
 
 desugar_jdk_libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar_jdk_libs" }
 google-exoplayer-core = { group = "com.google.android.exoplayer", name = "exoplayer-core", version.ref = "google-exoplayer" }
@@ -142,13 +133,9 @@ joda-time = { group = "joda-time", name = "joda-time", version.ref = "joda-time"
 jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 
-junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
-junit-junitbom = { module = "org.junit:junit-bom", version.ref = "junit-jupiter" }
-kotlin-gradle = { group = "org.jetbrains.kotlin", name = "kotlin-gradle-plugin", version.ref = "kotlin" }
 kotlin-junit = { group = "org.jetbrains.kotlin", name = "kotlin-test-junit", version.ref = "kotlin" }
 kotlin-reflect = { group = "org.jetbrains.kotlin", name = "kotlin-reflect", version.ref = "kotlin" }
 kotlin-stdlib = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib", version.ref = "kotlin" }
-kotlin-test= { group = "org.jetbrains.kotlin", name = "kotlin-test", version.ref = "kotlin" }
 
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinx-coroutines-test" }
@@ -163,7 +150,6 @@ pspdfkit = { group = "com.pspdfkit", name = "pspdfkit", version.ref ="pspdfkit" 
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 
 timber = { group = "com.jakewharton.timber", name = "timber", version.ref = "timber" }
-androidx-junit-ktx = { group = "androidx.test.ext", name = "junit-ktx", version = "1.1.5" }
 
 plugin-android = { module = "com.android.tools.build:gradle", version.ref = "agp" }
 plugin-kotlin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
@@ -184,17 +170,3 @@ lifecycle = ["androidx-lifecycle-common", "androidx-lifecycle-extensions", "andr
 media2 = ["androidx-media2-session", "androidx-media2-player", "google-exoplayer-core", "google-exoplayer-extension-media2"]
 media3 = ["androidx-media3-session", "androidx-media3-common", "androidx-media3-exoplayer"]
 room = ["androidx-room-runtime", "androidx-room-ktx"]
-test-frameworks = ["junit", "androidx-ext-junit", "androidx-expresso-core", "robolectric", "kotlin-junit", "assertj", "kotlinx-coroutines-test"]
-
-[plugins]
-androidApplication = { id = "com.android.application", version.ref = "agp" }
-library={id="com.android.library",version.ref = "agp"}
-kotlinAndroid = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
-serialization={id="org.jetbrains.kotlin.plugin.serialization",version.ref= "kotlin"}
-
-publishPlugin={id="io.github.gradle-nexus.publish-plugin",version.ref = "publish-Plugin"}
-dokka={id="org.jetbrains.dokka",version.ref = "dokka-version"}
-ksp={id="com.google.devtools.ksp",version.ref = "ksp-version"}
-ktlint={id="org.jlleitschuh.gradle.ktlint",version.ref = "ktlint-version"}
-
-
